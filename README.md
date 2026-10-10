@@ -1,6 +1,6 @@
-# Ajazz AK820 Pro Linux Screen & System Controller
+# Ajazz AK820 Pro Linux Screen, Clock & Milestone Radar Controller
 
-Native Linux CLI tool to control the `0.85"` 128×128 TFT screen (custom static images, animated GIFs, built-in presets) and synchronize the internal RTC clock on the **Ajazz AK820 Pro** (`VID 0x0C45`, `PID 0x800A` / `0x8009`).
+Native Linux CLI tool to control the `0.85"` 128×128 TFT screen (Family Milestone Radar, AI status cards, custom static images, animated GIFs) and synchronize the internal RTC clock on the **Ajazz AK820 Pro** (`VID 0x0C45`, `PID 0x800A` / `0x8009`).
 
 See [`FINDINGS.md`](FINDINGS.md) for the complete USB HID protocol and Sonix `SN32F290` firmware disassembly notes.
 
@@ -17,26 +17,54 @@ See [`FINDINGS.md`](FINDINGS.md) for the complete USB HID protocol and Sonix `SN
 
 ## Usage
 
-### 1. Probe Keyboard Interfaces
+### 1. Family Milestone Radar (`radar` & `events`)
+Reads recurring family events from [`/home/ervin/personal-data/ak820_events.json`](/home/ervin/personal-data/ak820_events.json), computes exact days remaining and upcoming ages/anniversary years, and pushes a high-contrast 128×128 countdown screen (with SHA-256 deduplication so daily timers never re-upload unchanged screens):
+
 ```bash
-python3 ak820_ctrl.py probe
+# List upcoming family milestones (add --json for AI tools)
+python3 ak820_ctrl.py events list
+
+# Add or update a milestone
+python3 ak820_ctrl.py events add --title "Daughter's Birthday" --short "DAUGHTER" --date "2025-11-06" --category birthday
+
+# Push the 2-slide alternating Radar (Hero Countdown + 3-Row Family Board, ~5s per slide)
+python3 ak820_ctrl.py radar --view cycle
+
+# Push Hybrid mode (2 loops of Bongo Cat + Hero Countdown + 3-Row Family Board)
+python3 ak820_ctrl.py radar --view hybrid
+
+# Push static single-frame Hero Card or 3-Row Board (fast ~2.2s upload)
+python3 ak820_ctrl.py radar --view hero
+python3 ak820_ctrl.py radar --view board
 ```
 
-### 2. Upload Built-In Preset or Custom GIF / Image
+### 2. AI-Ready Custom Status / Sticky-Note Card (`card`)
+Any AI agent (OpenClaw, Antigravity) or script can push an instant 1-frame high-contrast card (`soon`, `warn`, `urgent`, `today`, `calm`, `green`):
+```bash
+python3 ak820_ctrl.py card --title "REMINDER" --value "BUY GIFT" --sub "Daughter 1st B-Day" --footer "Nov 06 (27d)" --theme warn
+```
+
+### 3. Upload Any Image or Animated GIF (`upload`)
 ```bash
 # Upload bundled Bongo Cat animation
 python3 ak820_ctrl.py upload presets/bongo_cat.gif
 
-# Or use the --preset flag (bongo, cyberpunk, cat, matrix, fire, stats)
-python3 ak820_ctrl.py --preset bongo
-
-# Upload any custom GIF, PNG, or JPG (auto-resized to 128x128 RGB565 LE)
-python3 ak820_ctrl.py upload /path/to/image.png --fit cover
+# Upload custom GIF, PNG, or JPG (auto-resized to 128x128 RGB565 LE)
+python3 ak820_ctrl.py upload /path/to/image.png --fit fill
 python3 ak820_ctrl.py upload /path/to/banner.jpg --fit contain
 ```
 
-### 3. Synchronize Internal Clock
+### 4. Synchronize Internal Clock & Probe Interfaces
 ```bash
 python3 ak820_ctrl.py sync-clock
+python3 ak820_ctrl.py probe
 ```
-*(In `--preset` / `--image` mode, the RTC clock is also synced automatically before the image upload unless `--no-clock` is passed).*
+
+---
+
+## Automated Daily Sync (`systemd` User Timer)
+
+`ak820-radar.timer` runs `ak820_ctrl.py radar --view cycle --sync-clock` daily at `07:00` (and on wake/boot via `Persistent=true`):
+```bash
+systemctl --user status ak820-radar.timer
+```

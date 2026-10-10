@@ -323,14 +323,16 @@ def _build_gif_header(num_frames, delays_ms=None):
     return bytes(header)
 
 
-def upload_to_screen(dev: AK820ProDevice, file_path: str, fit_mode: str = "fill"):
-    """Execute the full START -> IMAGE_CFG -> DATA+ACK -> SAVE transaction."""
-    if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
-
-    frames, delays = load_frames_from_file(file_path, fit_mode=fit_mode)
+def upload_frames_to_screen(
+    dev: AK820ProDevice,
+    frames: list,
+    delays_ms: list = None,
+    label: str = "screen",
+    force: bool = True,
+):
+    """Execute START -> IMAGE_CFG -> DATA+ACK -> SAVE for a list of RGB565 frames."""
     num_frames = len(frames)
-    header = _build_gif_header(num_frames, delays)
+    header = _build_gif_header(num_frames, delays_ms)
 
     payload = bytearray(header)
     for f in frames:
@@ -338,6 +340,13 @@ def upload_to_screen(dev: AK820ProDevice, file_path: str, fit_mode: str = "fill"
 
     total_chunks = (len(payload) + CHUNK_SIZE - 1) // CHUNK_SIZE
     payload.extend(b"\x00" * (total_chunks * CHUNK_SIZE - len(payload)))
+    payload_bytes = bytes(payload)
+
+    import milestone_radar as mr
+    should_upload, digest = mr.check_and_record_payload_hash(payload_bytes, label, force=force)
+    if not should_upload:
+        print(f"Screen already displays '{label}' (sha256={digest[:10]}...). Skipping USB upload (use --force to override).")
+        return False
 
     print("Aligning USB data pipe sub-packet counter...")
     aligned_pkts, acked = dev.align_data_pipe()
@@ -346,7 +355,7 @@ def upload_to_screen(dev: AK820ProDevice, file_path: str, fit_mode: str = "fill"
     else:
         print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets).")
 
-    print(f"Uploading '{os.path.basename(file_path)}' ({num_frames} frame(s), {total_chunks} chunks)...")
+    print(f"Uploading '{label}' ({num_frames} frame(s), {total_chunks} chunks)...")
 
     # Step 1: START (enable=False)
     dev.send_feature(_cmd_packet(0x18, enable=False))
@@ -366,7 +375,7 @@ def upload_to_screen(dev: AK820ProDevice, file_path: str, fit_mode: str = "fill"
     # Step 3: Stream 4096-byte chunks and strictly await per-chunk ACK
     acks = 0
     for idx in range(total_chunks):
-        chunk = payload[idx * CHUNK_SIZE:(idx + 1) * CHUNK_SIZE]
+        chunk = payload_bytes[idx * CHUNK_SIZE:(idx + 1) * CHUNK_SIZE]
         ack = dev.send_data_chunk(chunk, timeout_ms=CHUNK_ACK_TIMEOUT_MS)
         if ack is not None:
             acks += 1
@@ -379,7 +388,18 @@ def upload_to_screen(dev: AK820ProDevice, file_path: str, fit_mode: str = "fill"
     dev.send_feature(_cmd_packet(0x02, enable=False))
     dev.handshake(post_delay=0.10)
     dev.drain_data_acks()
+    if acks == total_chunks:
+        mr.save_payload_hash(digest, label)
     print("Upload and flash save complete!")
+    return True
+
+
+def upload_to_screen(dev: AK820ProDevice, file_path: str, fit_mode: str = "fill", force: bool = True):
+    """Load an image or GIF from disk and upload it to the TFT display."""
+    if not os.path.exists(file_path):
+        raise FileNotFoundError(f"File not found: {file_path}")
+    frames, delays = load_frames_from_file(file_path, fit_mode=fit_mode)
+    return upload_frames_to_screen(dev, frames, delays, label=os.path.basename(file_path), force=force)
 
 
 def sync_clock(dev: AK820ProDevice):
@@ -420,18 +440,148 @@ def sync_clock(dev: AK820ProDevice):
     print("Clock synced successfully!")
 
 
+def build_radar_frames(view: str, upcoming: list, today: datetime.date):
+    """Build RGB565 frames and frame delays (ms) for the requested radar view."""
+    import milestone_radar as mr
+
+    hero_rgb = image_to_rgb565(mr.render_hero_card(upcoming, today=today))
+    board_rgb = image_to_rgb565(mr.render_board_card(upcoming, today=today))
+
+    if view == "hero":
+        return [hero_rgb], None
+    elif view == "board":
+        return [board_rgb], None
+    elif view == "hybrid":
+        bongo_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "presets", "bongo_cat.gif")
+        frames, delays = [], []
+        if os.path.exists(bongo_path):
+            b_frames, b_delays = load_frames_from_file(bongo_path, fit_mode="fill")
+            # 2 loops of Bongo Cat
+            for _ in range(2):
+                frames.extend(b_frames)
+                delays.extend(b_delays or [125] * len(b_frames))
+        # Append 2 frames of Hero Card (~5s) + 2 frames of Board Card (~5s)
+        frames.extend([hero_rgb, hero_rgb, board_rgb, board_rgb])
+        delays.extend([1275, 1275, 1275, 1275])
+        return frames, delays
+    else:  # "cycle": 2 frames Hero (~5s) + 2 frames Board (~5s)
+        return [hero_rgb, hero_rgb, board_rgb, board_rgb], [1275, 1275, 1275, 1275]
+
+
 def main():
-    parser = argparse.ArgumentParser(description="Ajazz AK820 Pro Linux Screen & Clock Controller")
+    import json
+    import milestone_radar as mr
+
+    parser = argparse.ArgumentParser(description="Ajazz AK820 Pro Linux Screen, Clock & Milestone Radar Controller")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    # 1. upload
     img_parser = subparsers.add_parser("upload", help="Upload image or animated GIF to TFT display")
     img_parser.add_argument("file", help="Path to PNG, JPG, BMP, or GIF file")
     img_parser.add_argument("--fit", choices=["fill", "contain", "stretch"], default="fill", help="Image fit mode")
+    img_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already active")
 
+    # 2. radar (Family Milestone Radar)
+    radar_parser = subparsers.add_parser("radar", help="Render and upload Family Milestone Radar to the screen")
+    radar_parser.add_argument(
+        "--view",
+        choices=["cycle", "hero", "board", "hybrid"],
+        default="cycle",
+        help="cycle=Hero+Board loop (default), hero=closest event only, board=3-row list, hybrid=Bongo Cat+Radar",
+    )
+    radar_parser.add_argument("--date", help="Override today's date (YYYY-MM-DD) for testing/preview")
+    radar_parser.add_argument("--save-preview", help="Save rendered PNG preview(s) to directory instead of uploading")
+    radar_parser.add_argument("--sync-clock", action="store_true", help="Also synchronize the keyboard RTC clock")
+    radar_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already on screen")
+
+    # 3. card (AI-ready custom sticky note / status card)
+    card_parser = subparsers.add_parser("card", help="Render and upload a custom AI/status card to the screen")
+    card_parser.add_argument("--title", required=True, help="Top header banner text (e.g. REMINDER, KODI, AI)")
+    card_parser.add_argument("--value", required=True, help="Big center headline text (e.g. 27 DAYS, READY, DONE)")
+    card_parser.add_argument("--sub", default="", help="Subtitle line below center box")
+    card_parser.add_argument("--footer", default="", help="Bottom footer ticker line")
+    card_parser.add_argument(
+        "--theme",
+        choices=["soon", "warn", "urgent", "today", "calm", "green"],
+        default="soon",
+        help="Color theme (soon=cyan, warn=gold, urgent=red, today=magenta/gold, calm=blue, green=emerald)",
+    )
+    card_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already on screen")
+
+    # 4. events (Manage /home/ervin/personal-data/ak820_events.json)
+    ev_parser = subparsers.add_parser("events", help="List, add, or remove family milestones")
+    ev_sub = ev_parser.add_subparsers(dest="events_action", required=False)
+    ev_list = ev_sub.add_parser("list", help="List upcoming milestones sorted by days left")
+    ev_list.add_argument("--json", action="store_true", help="Output JSON for AI tools")
+
+    ev_add = ev_sub.add_parser("add", help="Add or update a milestone in ak820_events.json")
+    ev_add.add_argument("--title", required=True, help="Full event title (e.g. \"Daughter's Birthday\")")
+    ev_add.add_argument("--short", required=True, help="Short label for 128x128 screen (max ~10 chars, e.g. DAUGHTER)")
+    ev_add.add_argument("--date", required=True, help="Date in YYYY-MM-DD or MM-DD format")
+    ev_add.add_argument("--category", choices=["birthday", "anniversary", "milestone"], default="milestone")
+
+    ev_rm = ev_sub.add_parser("remove", help="Remove a milestone by id or title")
+    ev_rm.add_argument("target", help="Event id or title to remove")
+
+    # 5. sync-clock & probe
     subparsers.add_parser("sync-clock", help="Sync system date & time to keyboard RTC")
     subparsers.add_parser("probe", help="Detect keyboard HID interfaces")
 
     args = parser.parse_args()
+
+    # Handle offline 'events' subcommands without requiring USB hidraw access
+    if args.command == "events":
+        cfg = mr.load_events_config()
+        action = args.events_action or "list"
+        if action == "list":
+            upcoming = mr.compute_upcoming_events(cfg)
+            if getattr(args, "json", False):
+                for u in upcoming:
+                    u["next_date"] = u["next_date"].isoformat()
+                print(json.dumps(upcoming, indent=2))
+            else:
+                print(f"{'EVENT':<22} {'NEXT DATE':<12} {'LEFT':<8} {'MILESTONE':<12} {'URGENCY'}")
+                print("-" * 68)
+                for u in upcoming:
+                    print(f"{u['title']:<22} {str(u['next_date']):<12} {str(u['days_left']) + 'd':<8} {u['milestone_str']:<12} {u['theme_key']}")
+            return
+        elif action == "add":
+            ev_id = args.short.lower().replace(" ", "-")
+            events = [e for e in cfg.get("events", []) if e.get("id") != ev_id and e.get("title") != args.title]
+            events.append({
+                "id": ev_id,
+                "title": args.title,
+                "short_title": args.short.upper(),
+                "date": args.date,
+                "category": args.category,
+            })
+            cfg["events"] = events
+            mr.save_events_config(cfg)
+            print(f"Saved event '{args.title}' ({args.date}) to {mr.DEFAULT_EVENTS_PATH}")
+            return
+        elif action == "remove":
+            before = len(cfg.get("events", []))
+            cfg["events"] = [
+                e for e in cfg.get("events", [])
+                if e.get("id") != args.target and e.get("title", "").lower() != args.target.lower()
+            ]
+            mr.save_events_config(cfg)
+            print(f"Removed {before - len(cfg['events'])} event(s).")
+            return
+
+    today = datetime.date.fromisoformat(args.date) if getattr(args, "date", None) else datetime.date.today()
+
+    if args.command == "radar" and args.save_preview:
+        cfg = mr.load_events_config()
+        upcoming = mr.compute_upcoming_events(cfg, today=today)
+        os.makedirs(args.save_preview, exist_ok=True)
+        p1 = os.path.join(args.save_preview, "radar_hero.png")
+        p2 = os.path.join(args.save_preview, "radar_board.png")
+        mr.render_hero_card(upcoming, today=today).save(p1)
+        mr.render_board_card(upcoming, today=today).save(p2)
+        print(f"Saved previews to {p1} and {p2}")
+        return
+
     tft_dev, ctrl_dev = find_hidraw_devices()
 
     if args.command == "probe":
@@ -439,15 +589,29 @@ def main():
         print(f"Control/RTC Interface (0xFF13): {ctrl_dev or 'NOT FOUND'}")
         return
 
-    if not ctrl_dev or (args.command == "upload" and not tft_dev):
+    need_tft = args.command in ("upload", "radar", "card")
+    if not ctrl_dev or (need_tft and not tft_dev):
         sys.exit("Error: AK820 Pro USB HID interfaces not found. Ensure the keyboard is connected via USB cable.")
 
     with AK820ProDevice(tft_dev, ctrl_dev) as dev:
         if args.command == "upload":
-            upload_to_screen(dev, args.file, args.fit)
+            upload_to_screen(dev, args.file, args.fit, force=args.force)
         elif args.command == "sync-clock":
             sync_clock(dev)
+        elif args.command == "radar":
+            if args.sync_clock:
+                sync_clock(dev)
+            cfg = mr.load_events_config()
+            upcoming = mr.compute_upcoming_events(cfg, today=today)
+            frames, delays = build_radar_frames(args.view, upcoming, today)
+            label = f"radar:{args.view}:{today.isoformat()}"
+            upload_frames_to_screen(dev, frames, delays, label=label, force=args.force)
+        elif args.command == "card":
+            img = mr.render_custom_card(args.title, args.value, args.sub, args.footer, args.theme)
+            label = f"card:{args.title}:{args.value}:{args.sub}:{args.footer}:{args.theme}"
+            upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
 
 
 if __name__ == "__main__":
     main()
+
