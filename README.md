@@ -1,27 +1,17 @@
 # Ajazz AK820 Pro Linux Screen & System Controller
 
-Native Linux CLI tool to control the TFT screen (images, animations/GIFs, playback index) and sync the internal clock on the **Ajazz AK820 Pro** (USB Vendor `0x0C45`, Product `0x800A` / `0x8009`).
+Native Linux CLI tool to control the `0.85"` 128×128 TFT screen (custom static images, animated GIFs, built-in presets) and synchronize the internal RTC clock on the **Ajazz AK820 Pro** (`VID 0x0C45`, `PID 0x800A` / `0x8009`).
 
----
-
-## Why OpenClaw Could Not Control the Screen Earlier
-
-The Ajazz AK820 Pro exposes 4 separate USB HID interfaces on Linux:
-1. **Interface 0 & 1** (`/dev/hidraw0`, `/dev/hidraw1`): Standard keyboard and mouse/consumer media controls.
-2. **Interface 2** (`/dev/hidraw2`): High-throughput vendor data pipe (Usage Page `0xFF68`). Advertises **4,096-byte output reports** specifically for pushing 128×128 RGB565 raw frame streams to the SPI GC9107 TFT display.
-3. **Interface 3** (`/dev/hidraw3`): Standard 64-byte control channel (Usage Page `0xFF13`). Used for keyboard settings, lighting modes, and RTC clock synchronization.
-
-Most generic tools fail because:
-- The TFT screen payload requires a **bespoke 8-byte frame header** (`0xAA 0x50 chunk_idx total_chunks 0x50 0x06`) and a **256-byte frame delay table** followed by 32,768 bytes of little-endian RGB565 pixels per frame.
-- The upload must be written directly to the 4 KB report descriptor on Interface 2 (`/dev/hidraw2`), whereas settings like clock sync are sent via HID feature reports on Interface 3 (`/dev/hidraw3`).
+See [`FINDINGS.md`](FINDINGS.md) for the complete USB HID protocol and Sonix `SN32F290` firmware disassembly notes.
 
 ---
 
 ## Requirements
 
-- Python 3
+- Python 3.10+
 - Pillow (`python3-pil`)
-- Wired USB connection (the 2.4 GHz dongle and Bluetooth modes do not expose the high-speed TFT flash upload pipe)
+- Wired USB connection (2.4 GHz wireless and Bluetooth modes do not expose the vendor HID display interfaces)
+- Access to `/dev/hidraw*` (via `udev` rule or user permissions for `0c45:800a`)
 
 ---
 
@@ -29,38 +19,24 @@ Most generic tools fail because:
 
 ### 1. Probe Keyboard Interfaces
 ```bash
-./ak820_ctrl.py probe
-```
-Output:
-```
-TFT Display Interface:   /dev/hidraw2
-Control/Clock Interface: /dev/hidraw3
+python3 ak820_ctrl.py probe
 ```
 
-### 2. Synchronize Clock
-Pushes system time to the keyboard's internal RTC:
+### 2. Upload Built-In Preset or Custom GIF / Image
 ```bash
-./ak820_ctrl.py sync-clock
+# Upload bundled Bongo Cat animation
+python3 ak820_ctrl.py upload presets/bongo_cat.gif
+
+# Or use the --preset flag (bongo, cyberpunk, cat, matrix, fire, stats)
+python3 ak820_ctrl.py --preset bongo
+
+# Upload any custom GIF, PNG, or JPG (auto-resized to 128x128 RGB565 LE)
+python3 ak820_ctrl.py upload /path/to/image.png --fit cover
+python3 ak820_ctrl.py upload /path/to/banner.jpg --fit contain
 ```
 
-### 3. Upload Custom Image or GIF
-Uploads any static image (PNG, JPG, BMP) or animated GIF (up to 30 frames, automatically clamped to 128×128):
+### 3. Synchronize Internal Clock
 ```bash
-# Fill/crop to 128x128 (default)
-./ak820_ctrl.py upload /path/to/image.png
-
-# Letterbox/contain with black bars
-./ak820_ctrl.py upload /path/to/banner.jpg --fit contain
-
-# Upload animated GIF
-./ak820_ctrl.py upload /path/to/animation.gif
+python3 ak820_ctrl.py sync-clock
 ```
-
-### 4. Switch Screen View / Built-in Index
-If the screen doesn't automatically flip to your uploaded image, cycle or set the display index:
-```bash
-./ak820_ctrl.py select-index 0
-./ak820_ctrl.py select-index 1
-```
-*(You can also press and hold the rotary knob for 3-5 seconds to navigate the keyboard's onboard TFT menu to select the Custom Animation).*
-
+*(In `--preset` / `--image` mode, the RTC clock is also synced automatically before the image upload unless `--no-clock` is passed).*
