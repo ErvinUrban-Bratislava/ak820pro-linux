@@ -134,7 +134,8 @@ def upload_animation(tft_dev, frames, delays):
             end = min(start + TFT_PAYLOAD_LEN, len(payload))
             chunk_slice = payload[start:end]
 
-            report = bytearray(4096)
+            # 4104 bytes: 8 bytes bespoke header + up to 4096 bytes chunk payload
+            report = bytearray(4104)
             report[0:8] = build_tft_header(80, i, total_chunks)
             report[8:8 + len(chunk_slice)] = chunk_slice
 
@@ -304,3 +305,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

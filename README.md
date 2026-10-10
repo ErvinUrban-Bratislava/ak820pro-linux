@@ -63,3 +63,4 @@ If the screen doesn't automatically flip to your uploaded image, cycle or set th
 ./ak820_ctrl.py select-index 1
 ```
 *(You can also press and hold the rotary knob for 3-5 seconds to navigate the keyboard's onboard TFT menu to select the Custom Animation).*
+
