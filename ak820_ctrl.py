@@ -19,6 +19,7 @@ import fcntl
 import os
 import select
 import struct
+import subprocess
 import sys
 import time
 from PIL import Image, ImageOps
@@ -440,6 +441,321 @@ def sync_clock(dev: AK820ProDevice):
     print("Clock synced successfully!")
 
 
+LIGHT_MODES = {
+    "off": 0,
+    "static": 1,
+    "single-on": 2,
+    "single-off": 3,
+    "glittering": 4,
+    "falling": 5,
+    "colourful": 6,
+    "breath": 7,
+    "spectrum": 8,
+    "outward": 9,
+    "scrolling": 10,
+    "rolling": 11,
+    "rotating": 12,
+    "explode": 13,
+    "launch": 14,
+    "ripples": 15,
+    "flowing": 16,
+    "pulsating": 17,
+    "tilt": 18,
+    "shuttle": 19,
+}
+
+SHOWCASE_PRESETS = [
+    {
+        "key": "warm-white",
+        "name": "Warm White",
+        "mode": 1,
+        "color": "#FFE0B2",
+        "rainbow": False,
+        "brightness": 4,
+        "speed": 3,
+        "desc": "Subtle incandescent glow, easy on the eyes for coding & reading",
+    },
+    {
+        "key": "amber-retro",
+        "name": "Amber Terminal",
+        "mode": 1,
+        "color": "#FF8C00",
+        "rainbow": False,
+        "brightness": 4,
+        "speed": 3,
+        "desc": "Warm retro amber terminal glow",
+    },
+    {
+        "key": "cyber-cyan",
+        "name": "Cyber Cyan",
+        "mode": 1,
+        "color": "#00E5FF",
+        "rainbow": False,
+        "brightness": 4,
+        "speed": 3,
+        "desc": "Crisp modern cyberpunk cyan highlight",
+    },
+    {
+        "key": "spectrum",
+        "name": "Spectrum Wave",
+        "mode": 8,
+        "color": "#000000",
+        "rainbow": True,
+        "brightness": 4,
+        "speed": 3,
+        "desc": "Continuous smooth full-spectrum rainbow color cycle",
+    },
+    {
+        "key": "single-on",
+        "name": "Reactive Typing",
+        "mode": 2,
+        "color": "#00E5FF",
+        "rainbow": False,
+        "brightness": 5,
+        "speed": 3,
+        "desc": "Stealth ambient: keys illuminate under your fingers as you type",
+    },
+    {
+        "key": "breath-lavender",
+        "name": "Breathing Lavender",
+        "mode": 7,
+        "color": "#BA68C8",
+        "rainbow": False,
+        "brightness": 4,
+        "speed": 2,
+        "desc": "Slow, relaxing lavender breathing pulsation",
+    },
+    {
+        "key": "flowing",
+        "name": "Flowing Stream",
+        "mode": 16,
+        "color": "#000000",
+        "rainbow": True,
+        "brightness": 4,
+        "speed": 3,
+        "desc": "Dynamic gradient flowing sideways across the keyboard",
+    },
+    {
+        "key": "off",
+        "name": "Stealth (Off)",
+        "mode": 0,
+        "color": "#000000",
+        "rainbow": False,
+        "brightness": 0,
+        "speed": 0,
+        "desc": "Zero LEDs, completely dark",
+    },
+]
+
+
+def parse_hex_color(hex_str: str) -> tuple:
+    h = hex_str.lstrip("#")
+    if len(h) == 3:
+        h = "".join([c * 2 for c in h])
+    if len(h) != 6:
+        raise ValueError(f"Invalid hex color: '{hex_str}' (expected #RRGGBB or #RGB)")
+    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+
+
+def set_backlight(
+    dev: AK820ProDevice,
+    mode: int = 1,
+    r: int = 255,
+    g: int = 255,
+    b: int = 255,
+    rainbow: bool = False,
+    brightness: int = 4,
+    speed: int = 3,
+    direction: int = 0,
+    save: bool = False,
+):
+    """Send lighting mode configuration to Interface 3."""
+    # 1. START (0x18)
+    dev.send_feature(_cmd_packet(0x18, enable=True))
+    time.sleep(CMD_DELAY)
+    dev.handshake()
+
+    # 2. START_MODE (0x13)
+    dev.send_feature(_cmd_packet(0x13, enable=True))
+    dev.handshake()
+
+    # 3. MODE_DATA
+    data = bytearray(64)
+    data[0] = mode & 0xFF
+    data[1] = r & 0xFF
+    data[2] = g & 0xFF
+    data[3] = b & 0xFF
+    data[8] = 1 if rainbow else 0
+    data[9] = max(0, min(5, brightness))
+    data[10] = max(0, min(5, speed))
+    data[11] = direction & 0x03
+    data[14] = 0x55
+    data[15] = 0xAA
+    dev.send_feature(data)
+    time.sleep(CMD_DELAY)
+    dev.handshake()
+
+    # 4. FINISH (0xF0) or SAVE (0x02)
+    if save:
+        dev.send_feature(_cmd_packet(0x02, enable=False))
+    else:
+        dev.send_feature(_cmd_packet(0xF0, enable=True))
+    dev.handshake()
+
+
+def wait_for_keypress(timeout: float = None) -> bool:
+    """Wait for user input on the AK820 Pro keyboard (keypress or knob event)."""
+    dev_paths = ["/dev/hidraw0", "/dev/hidraw1"]
+    fds = []
+    for p in dev_paths:
+        if os.path.exists(p):
+            try:
+                fds.append(os.open(p, os.O_RDONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
+    if not fds:
+        # Fallback to stdin wait if hidraw0/1 not accessible
+        r, _, _ = select.select([sys.stdin], [], [], timeout)
+        return bool(r)
+    try:
+        # Drain stale unread inputs
+        for fd in fds:
+            while select.select([fd], [], [], 0)[0]:
+                try:
+                    os.read(fd, 64)
+                except OSError:
+                    break
+        # Wait for next input
+        r, _, _ = select.select(fds, [], [], timeout)
+        if r:
+            for fd in r:
+                try:
+                    os.read(fd, 64)
+                except OSError:
+                    pass
+            return True
+        return False
+    finally:
+        for fd in fds:
+            os.close(fd)
+
+
+def get_idle_backlight_cfg() -> dict:
+    import milestone_radar as mr
+    cfg = mr.load_events_config()
+    bl = cfg.get("backlight", {})
+    return {
+        "preset": bl.get("idle_preset", "warm-white"),
+        "mode": bl.get("idle_mode", 1),
+        "color": bl.get("idle_color", "#FFE0B2"),
+        "rainbow": bl.get("idle_rainbow", False),
+        "brightness": bl.get("idle_brightness", 4),
+        "speed": bl.get("idle_speed", 3),
+        "direction": bl.get("idle_direction", 0),
+    }
+
+
+def save_idle_backlight_cfg(
+    idle_preset: str = "warm-white",
+    mode: int = 1,
+    color: str = "#FFE0B2",
+    rainbow: bool = False,
+    brightness: int = 4,
+    speed: int = 3,
+    direction: int = 0,
+):
+    import milestone_radar as mr
+    cfg = mr.load_events_config()
+    cfg["backlight"] = {
+        "idle_preset": idle_preset,
+        "idle_mode": mode,
+        "idle_color": color,
+        "idle_rainbow": rainbow,
+        "idle_brightness": brightness,
+        "idle_speed": speed,
+        "idle_direction": direction,
+    }
+    mr.save_events_config(cfg)
+
+
+def apply_idle_backlight(dev: AK820ProDevice):
+    cfg = get_idle_backlight_cfg()
+    preset_key = cfg.get("preset")
+    preset = next((p for p in SHOWCASE_PRESETS if p["key"] == preset_key), None)
+    if preset:
+        r, g, b = parse_hex_color(preset["color"])
+        set_backlight(dev, preset["mode"], r, g, b, preset["rainbow"], preset["brightness"], preset["speed"])
+    else:
+        r, g, b = parse_hex_color(cfg["color"])
+        set_backlight(dev, cfg["mode"], r, g, b, cfg["rainbow"], cfg["brightness"], cfg["speed"], cfg["direction"])
+
+
+def set_status_backlight(dev: AK820ProDevice, status_name: str, label: str = None, wait_key: bool = True):
+    status_name = status_name.lower().strip()
+    if status_name in ("in-progress", "busy", "progress", "work", "running"):
+        tag = f" ({label})" if label else ""
+        print(f"▶ Status: IN-PROGRESS{tag} -> Pulsing Amber backlight")
+        set_backlight(dev, mode=LIGHT_MODES["breath"], r=255, g=150, b=0, rainbow=False, brightness=4, speed=3)
+    elif status_name in ("success", "done", "ok", "passed"):
+        tag = f" ({label})" if label else ""
+        print(f"✔ Status: SUCCESS{tag} -> Emerald Green backlight")
+        set_backlight(dev, mode=LIGHT_MODES["breath"], r=0, g=230, b=70, rainbow=False, brightness=5, speed=2)
+        if wait_key:
+            print("⏳ Awaiting your next keypress on the keyboard to restore ambient lighting...")
+            wait_for_keypress()
+            print("⌨ Keypress detected! Restoring ambient idle backlight...")
+            apply_idle_backlight(dev)
+    elif status_name in ("failed", "error", "fail", "err"):
+        tag = f" ({label})" if label else ""
+        print(f"✖ Status: FAILED{tag} -> Urgent Red backlight")
+        set_backlight(dev, mode=LIGHT_MODES["breath"], r=255, g=20, b=20, rainbow=False, brightness=5, speed=4)
+        if wait_key:
+            print("⏳ Awaiting your next keypress on the keyboard to acknowledge error...")
+            wait_for_keypress()
+            print("⌨ Keypress detected! Restoring ambient idle backlight...")
+            apply_idle_backlight(dev)
+    elif status_name in ("idle", "normal", "reset", "clear"):
+        print("Restoring ambient idle backlight...")
+        apply_idle_backlight(dev)
+    else:
+        print(f"Unknown status '{status_name}'. Valid: in-progress, success, failed, idle")
+
+
+def run_backlight_demo(dev: AK820ProDevice, dwell_seconds: float = 6.0):
+    print("=" * 64)
+    print("🌟 Ajazz AK820 Pro Ambient Backlight Showcase")
+    print(f"Cycling through {len(SHOWCASE_PRESETS)} curated presets ({dwell_seconds}s each).")
+    print("Watch the keyboard on your desk to pick your favorite!")
+    print("Press Ctrl+C anytime to stop.")
+    print("=" * 64)
+    try:
+        for idx, p in enumerate(SHOWCASE_PRESETS, start=1):
+            r, g, b = parse_hex_color(p["color"])
+            print(f"\n[{idx}/{len(SHOWCASE_PRESETS)}] {p['name'].upper()} (`{p['key']}`)")
+            print(f"   Mode: {p['mode']} | Color: {p['color']} | Brightness: {p['brightness']}")
+            print(f"   Vibe: {p['desc']}")
+            set_backlight(
+                dev,
+                mode=p["mode"],
+                r=r,
+                g=g,
+                b=b,
+                rainbow=p["rainbow"],
+                brightness=p["brightness"],
+                speed=p["speed"],
+            )
+            end_t = time.time() + dwell_seconds
+            while time.time() < end_t:
+                time.sleep(0.1)
+    except KeyboardInterrupt:
+        print("\nDemo interrupted by user.")
+    print("\n" + "=" * 64)
+    print("Done! To set and save your favorite preset as your default idle backlight:")
+    print("   python3 ak820_ctrl.py backlight set --preset <key> --save")
+    print("Example: python3 ak820_ctrl.py backlight set --preset warm-white --save")
+    print("=" * 64)
+
+
 def build_radar_frames(view: str, upcoming: list, today: datetime.date, slide_seconds: float = 5.0):
     """
     Build RGB565 frames and frame delays (ms) for the requested radar view.
@@ -540,6 +856,40 @@ def main():
     subparsers.add_parser("sync-clock", help="Sync system date & time to keyboard RTC")
     subparsers.add_parser("probe", help="Detect keyboard HID interfaces")
 
+    # 6. backlight
+    bl_parser = subparsers.add_parser("backlight", help="Control RGB keyboard backlighting (modes, colors, demo)")
+    bl_sub = bl_parser.add_subparsers(dest="bl_action", required=False)
+
+    bl_demo = bl_sub.add_parser("demo", help="Showcase curated ambient lighting presets live on your keyboard")
+    bl_demo.add_argument("--dwell", type=float, default=6.0, help="Seconds to display each preset (default: 6.0)")
+
+    bl_sub.add_parser("list", help="List all lighting modes and showcase presets")
+
+    bl_set = bl_sub.add_parser("set", help="Set lighting mode, color, brightness or preset")
+    bl_set.add_argument("--preset", choices=[p["key"] for p in SHOWCASE_PRESETS], help="Apply a named showcase preset")
+    bl_set.add_argument("--mode", help="Lighting mode name or integer 0..19 (e.g. static, breath, spectrum)")
+    bl_set.add_argument("--color", default="#FFE0B2", help="Hex color (e.g. #FF8C00, #00E5FF, #FFFFFF)")
+    bl_set.add_argument("--rainbow", action="store_true", help="Enable multi-color rainbow mode")
+    bl_set.add_argument("--brightness", type=int, default=4, choices=range(0, 6), help="Brightness level 0..5 (default: 4)")
+    bl_set.add_argument("--speed", type=int, default=3, choices=range(0, 6), help="Animation speed 0..5 (default: 3)")
+    bl_set.add_argument("--direction", type=int, default=0, choices=[0, 1, 2, 3], help="Animation direction (0=Left, 1=Up, 2=Down, 3=Right)")
+    bl_set.add_argument("--save", action="store_true", help="Save as default idle ambient preset in events config & device flash")
+
+    bl_off = bl_sub.add_parser("off", help="Turn keyboard backlighting off")
+    bl_off.add_argument("--save", action="store_true", help="Save off state as default in device flash")
+
+    # 7. status
+    status_parser = subparsers.add_parser("status", help="Set workflow status lighting (in-progress, success, failed, idle)")
+    status_parser.add_argument("state", choices=["in-progress", "success", "failed", "idle"], help="Target workflow status state")
+    status_parser.add_argument("--label", default=None, help="Optional text description of task")
+    status_parser.add_argument("--no-wait", action="store_true", help="Do not wait for keypress to restore idle (exit immediately)")
+
+    # 8. run
+    run_parser = subparsers.add_parser("run", help="Wrap a shell command with live status lighting (in-progress -> success/failed -> keypress wait)")
+    run_parser.add_argument("--label", default=None, help="Optional text label for command")
+    run_parser.add_argument("--no-wait", action="store_true", help="Do not wait for keypress on completion")
+    run_parser.add_argument("cmd", nargs=argparse.REMAINDER, help="Command to execute (e.g. -- make, -- ./build.sh)")
+
     args = parser.parse_args()
 
     # Handle offline 'events' subcommands without requiring USB hidraw access
@@ -623,6 +973,87 @@ def main():
             img = mr.render_custom_card(args.title, args.value, args.sub, args.footer, args.theme)
             label = f"card:{args.title}:{args.value}:{args.sub}:{args.footer}:{args.theme}"
             upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
+        elif args.command == "backlight":
+            action = args.bl_action or "set"
+            if action == "demo":
+                run_backlight_demo(dev, dwell_seconds=args.dwell)
+            elif action == "list":
+                print(f"{'PRESET KEY':<18} {'NAME':<20} {'MODE':<6} {'COLOR':<10} {'DESCRIPTION'}")
+                print("-" * 80)
+                for p in SHOWCASE_PRESETS:
+                    print(f"{p['key']:<18} {p['name']:<20} {str(p['mode']):<6} {p['color']:<10} {p['desc']}")
+                print("\nSupported mode names:", ", ".join(LIGHT_MODES.keys()))
+            elif action == "off":
+                set_backlight(dev, mode=0, brightness=0, save=args.save)
+                if args.save:
+                    save_idle_backlight_cfg(idle_preset="off", mode=0, brightness=0)
+                print("Backlight turned OFF.")
+            elif action == "set":
+                if args.preset:
+                    p = next(x for x in SHOWCASE_PRESETS if x["key"] == args.preset)
+                    r, g, b = parse_hex_color(p["color"])
+                    set_backlight(
+                        dev,
+                        mode=p["mode"],
+                        r=r,
+                        g=g,
+                        b=b,
+                        rainbow=p["rainbow"],
+                        brightness=p["brightness"],
+                        speed=p["speed"],
+                        save=args.save,
+                    )
+                    if args.save:
+                        save_idle_backlight_cfg(
+                            idle_preset=p["key"],
+                            mode=p["mode"],
+                            color=p["color"],
+                            rainbow=p["rainbow"],
+                            brightness=p["brightness"],
+                            speed=p["speed"],
+                        )
+                    print(f"Applied preset '{p['name']}' (`{p['key']}`).")
+                else:
+                    mode_val = LIGHT_MODES.get(args.mode.lower(), int(args.mode)) if args.mode else 1
+                    r, g, b = parse_hex_color(args.color)
+                    set_backlight(
+                        dev,
+                        mode=mode_val,
+                        r=r,
+                        g=g,
+                        b=b,
+                        rainbow=args.rainbow,
+                        brightness=args.brightness,
+                        speed=args.speed,
+                        direction=args.direction,
+                        save=args.save,
+                    )
+                    if args.save:
+                        save_idle_backlight_cfg(
+                            idle_preset="custom",
+                            mode=mode_val,
+                            color=args.color,
+                            rainbow=args.rainbow,
+                            brightness=args.brightness,
+                            speed=args.speed,
+                            direction=args.direction,
+                        )
+                    print(f"Applied lighting (mode={mode_val}, color={args.color}, brightness={args.brightness}).")
+        elif args.command == "status":
+            set_status_backlight(dev, args.state, label=args.label, wait_key=not args.no_wait)
+        elif args.command == "run":
+            cmd = args.cmd
+            if cmd and cmd[0] == "--":
+                cmd = cmd[1:]
+            if not cmd:
+                sys.exit("Error: No command specified to run.")
+            set_status_backlight(dev, "in-progress", label=args.label)
+            res = subprocess.run(cmd)
+            if res.returncode == 0:
+                set_status_backlight(dev, "success", label=args.label, wait_key=not args.no_wait)
+            else:
+                set_status_backlight(dev, "failed", label=args.label, wait_key=not args.no_wait)
+                sys.exit(res.returncode)
 
 
 if __name__ == "__main__":
