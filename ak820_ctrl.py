@@ -440,12 +440,18 @@ def sync_clock(dev: AK820ProDevice):
     print("Clock synced successfully!")
 
 
-def build_radar_frames(view: str, upcoming: list, today: datetime.date):
-    """Build RGB565 frames and frame delays (ms) for the requested radar view."""
+def build_radar_frames(view: str, upcoming: list, today: datetime.date, slide_seconds: float = 5.0):
+    """
+    Build RGB565 frames and frame delays (ms) for the requested radar view.
+    In SN32F290 firmware (0x16304), each frame's delay byte (max 255) is counted
+    in 1ms SysTick ticks (~300ms total per frame including SPI->LCD blit).
+    Repeating a static slide N times holds it steady on screen for N * ~0.30s.
+    """
     import milestone_radar as mr
 
     hero_rgb = image_to_rgb565(mr.render_hero_card(upcoming, today=today))
     board_rgb = image_to_rgb565(mr.render_board_card(upcoming, today=today))
+    frames_per_slide = max(1, min(60, int(round(slide_seconds / 0.30))))
 
     if view == "hero":
         return [hero_rgb], None
@@ -456,16 +462,17 @@ def build_radar_frames(view: str, upcoming: list, today: datetime.date):
         frames, delays = [], []
         if os.path.exists(bongo_path):
             b_frames, b_delays = load_frames_from_file(bongo_path, fit_mode="fill")
-            # 2 loops of Bongo Cat
-            for _ in range(2):
+            # 4 loops of Bongo Cat (~4 seconds)
+            for _ in range(4):
                 frames.extend(b_frames)
                 delays.extend(b_delays or [125] * len(b_frames))
-        # Append 2 frames of Hero Card (~5s) + 2 frames of Board Card (~5s)
-        frames.extend([hero_rgb, hero_rgb, board_rgb, board_rgb])
-        delays.extend([1275, 1275, 1275, 1275])
+        frames.extend([hero_rgb] * frames_per_slide + [board_rgb] * frames_per_slide)
+        delays.extend([1275] * (frames_per_slide * 2))
         return frames, delays
-    else:  # "cycle": 2 frames Hero (~5s) + 2 frames Board (~5s)
-        return [hero_rgb, hero_rgb, board_rgb, board_rgb], [1275, 1275, 1275, 1275]
+    else:  # "cycle": Hero slide (~5s) + Board slide (~5s)
+        frames = [hero_rgb] * frames_per_slide + [board_rgb] * frames_per_slide
+        delays = [1275] * len(frames)
+        return frames, delays
 
 
 def main():
@@ -488,6 +495,12 @@ def main():
         choices=["cycle", "hero", "board", "hybrid"],
         default="cycle",
         help="cycle=Hero+Board loop (default), hero=closest event only, board=3-row list, hybrid=Bongo Cat+Radar",
+    )
+    radar_parser.add_argument(
+        "--seconds",
+        type=float,
+        default=5.0,
+        help="Dwell time in seconds per slide in cycle/hybrid mode (default: 5.0)",
     )
     radar_parser.add_argument("--date", help="Override today's date (YYYY-MM-DD) for testing/preview")
     radar_parser.add_argument("--save-preview", help="Save rendered PNG preview(s) to directory instead of uploading")
@@ -603,8 +616,8 @@ def main():
                 sync_clock(dev)
             cfg = mr.load_events_config()
             upcoming = mr.compute_upcoming_events(cfg, today=today)
-            frames, delays = build_radar_frames(args.view, upcoming, today)
-            label = f"radar:{args.view}:{today.isoformat()}"
+            frames, delays = build_radar_frames(args.view, upcoming, today, slide_seconds=args.seconds)
+            label = f"radar:{args.view}:{args.seconds}s:{today.isoformat()}"
             upload_frames_to_screen(dev, frames, delays, label=label, force=args.force)
         elif args.command == "card":
             img = mr.render_custom_card(args.title, args.value, args.sub, args.footer, args.theme)
