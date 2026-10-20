@@ -2,7 +2,7 @@
 """
 Family Milestone Radar & AI-Ready Card Renderer for Ajazz AK820 Pro (128x128 TFT).
 
-Reads recurring family events from /home/ervin/personal-data/ak820_events.json,
+Reads recurring family milestones from ~/.config/ak820/events.json (or $AK820_EVENTS_PATH),
 computes exact countdowns and milestone ages/years, and renders high-contrast
 128x128 RGB frames (Hero Countdown Card, 3-Row Family Board, Hybrid Carousel,
 and custom AI sticky-note cards).
@@ -18,7 +18,18 @@ from PIL import Image, ImageDraw, ImageFont
 SCREEN_W = 128
 SCREEN_H = 128
 
-DEFAULT_EVENTS_PATH = "/home/ervin/personal-data/ak820_events.json"
+def get_default_events_path() -> str:
+    """Return default path to ak820 events config with env/legacy/XDG fallback."""
+    if "AK820_EVENTS_PATH" in os.environ:
+        return os.path.expanduser(os.environ["AK820_EVENTS_PATH"])
+    legacy = os.path.expanduser("~/personal-data/ak820_events.json")
+    if os.path.exists(legacy):
+        return legacy
+    xdg_config = os.environ.get("XDG_CONFIG_HOME", os.path.expanduser("~/.config"))
+    return os.path.join(xdg_config, "ak820", "events.json")
+
+
+DEFAULT_EVENTS_PATH = get_default_events_path()
 DEFAULT_STATE_PATH = os.path.expanduser("~/.cache/ak820_screen_state.json")
 
 FONT_BOLD_PATHS = [
@@ -123,16 +134,18 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
-def load_events_config(config_path: str = DEFAULT_EVENTS_PATH) -> Dict:
-    if not os.path.exists(config_path):
+def load_events_config(config_path: Optional[str] = None) -> Dict:
+    path = config_path or get_default_events_path()
+    if not os.path.exists(path):
         return {"default_mode": "radar", "default_preset": "bongo", "events": []}
-    with open(config_path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
 
-def save_events_config(cfg: Dict, config_path: str = DEFAULT_EVENTS_PATH):
-    os.makedirs(os.path.dirname(config_path), exist_ok=True)
-    with open(config_path, "w", encoding="utf-8") as f:
+def save_events_config(cfg: Dict, config_path: Optional[str] = None):
+    path = config_path or get_default_events_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as f:
         json.dump(cfg, f, indent=2)
 
 

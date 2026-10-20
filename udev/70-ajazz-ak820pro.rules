@@ -1,0 +1,4 @@
+# Ajazz AK820 Pro Mechanical Keyboard (VID 0x0C45, PID 0x800A / 0x8009)
+# Grants desktop users access to /dev/hidraw* for TFT screen and RGB backlight control
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="800a", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="0c45", ATTRS{idProduct}=="8009", MODE="0660", TAG+="uaccess"

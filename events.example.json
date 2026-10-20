@@ -1,0 +1,41 @@
+{
+  "default_mode": "static",
+  "default_preset": "warm-white",
+  "warn_days": 14,
+  "urgent_days": 3,
+  "backlight": {
+    "idle_preset": "warm-white",
+    "idle_mode": 1,
+    "idle_color": "#FFE0B2",
+    "idle_rainbow": false,
+    "idle_brightness": 4,
+    "idle_speed": 3,
+    "idle_direction": 0
+  },
+  "events": [
+    {
+      "id": "open-source-launch",
+      "title": "Open Source Launch",
+      "short_title": "RELEASE",
+      "date": "2026-11-01",
+      "category": "milestone",
+      "note": "Public release celebration"
+    },
+    {
+      "id": "birthday-sample",
+      "title": "Alice's Birthday",
+      "short_title": "ALICE",
+      "date": "1995-12-15",
+      "category": "birthday",
+      "note": "Gift and cake"
+    },
+    {
+      "id": "anniversary-sample",
+      "title": "Wedding Anniversary",
+      "short_title": "WEDDING",
+      "date": "2020-06-20",
+      "category": "anniversary",
+      "note": "Dinner reservation"
+    }
+  ]
+}

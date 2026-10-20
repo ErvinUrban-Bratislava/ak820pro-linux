@@ -820,6 +820,7 @@ def main():
     )
     radar_parser.add_argument("--date", help="Override today's date (YYYY-MM-DD) for testing/preview")
     radar_parser.add_argument("--save-preview", help="Save rendered PNG preview(s) to directory instead of uploading")
+    radar_parser.add_argument("--config", help="Path to events JSON config (default: ~/.config/ak820/events.json or $AK820_EVENTS_PATH)")
     radar_parser.add_argument("--sync-clock", action="store_true", help="Also synchronize the keyboard RTC clock")
     radar_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already on screen")
 
@@ -837,8 +838,9 @@ def main():
     )
     card_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already on screen")
 
-    # 4. events (Manage /home/ervin/personal-data/ak820_events.json)
+    # 4. events (Manage milestones configuration)
     ev_parser = subparsers.add_parser("events", help="List, add, or remove family milestones")
+    ev_parser.add_argument("--config", help="Path to events JSON config (default: ~/.config/ak820/events.json or $AK820_EVENTS_PATH)")
     ev_sub = ev_parser.add_subparsers(dest="events_action", required=False)
     ev_list = ev_sub.add_parser("list", help="List upcoming milestones sorted by days left")
     ev_list.add_argument("--json", action="store_true", help="Output JSON for AI tools")
@@ -894,7 +896,8 @@ def main():
 
     # Handle offline 'events' subcommands without requiring USB hidraw access
     if args.command == "events":
-        cfg = mr.load_events_config()
+        cfg_path = getattr(args, "config", None)
+        cfg = mr.load_events_config(cfg_path)
         action = args.events_action or "list"
         if action == "list":
             upcoming = mr.compute_upcoming_events(cfg)
@@ -919,8 +922,9 @@ def main():
                 "category": args.category,
             })
             cfg["events"] = events
-            mr.save_events_config(cfg)
-            print(f"Saved event '{args.title}' ({args.date}) to {mr.DEFAULT_EVENTS_PATH}")
+            mr.save_events_config(cfg, cfg_path)
+            target_path = cfg_path or mr.get_default_events_path()
+            print(f"Saved event '{args.title}' ({args.date}) to {target_path}")
             return
         elif action == "remove":
             before = len(cfg.get("events", []))
@@ -928,14 +932,15 @@ def main():
                 e for e in cfg.get("events", [])
                 if e.get("id") != args.target and e.get("title", "").lower() != args.target.lower()
             ]
-            mr.save_events_config(cfg)
+            mr.save_events_config(cfg, cfg_path)
             print(f"Removed {before - len(cfg['events'])} event(s).")
             return
 
     today = datetime.date.fromisoformat(args.date) if getattr(args, "date", None) else datetime.date.today()
 
     if args.command == "radar" and args.save_preview:
-        cfg = mr.load_events_config()
+        cfg_path = getattr(args, "config", None)
+        cfg = mr.load_events_config(cfg_path)
         upcoming = mr.compute_upcoming_events(cfg, today=today)
         os.makedirs(args.save_preview, exist_ok=True)
         p1 = os.path.join(args.save_preview, "radar_hero.png")
@@ -964,7 +969,7 @@ def main():
         elif args.command == "radar":
             if args.sync_clock:
                 sync_clock(dev)
-            cfg = mr.load_events_config()
+            cfg = mr.load_events_config(getattr(args, "config", None))
             upcoming = mr.compute_upcoming_events(cfg, today=today)
             frames, delays = build_radar_frames(args.view, upcoming, today, slide_seconds=args.seconds)
             label = f"radar:{args.view}:{args.seconds}s:{today.isoformat()}"
