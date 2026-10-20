@@ -1,62 +1,69 @@
-# Ajazz AK820 Pro Linux Screen, Clock & Milestone Radar Controller
+# Ajazz AK820 Pro Linux Screen, Clock & Hardware Controller
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-green.svg)]()
+[![Tested on Ubuntu 24.04 / 26.04](https://img.shields.io/badge/tested-Ubuntu%2024.04%20%7C%2026.04-orange.svg)]()
 
-Native Linux CLI tool to control the `0.85"` 128×128 TFT screen (Family Milestone Radar, AI status cards, custom static images, animated GIFs), control RGB backlighting presets, and synchronize the internal RTC clock on the **Ajazz AK820 Pro** (`VID 0x0C45`, `PID 0x800A` / `0x8009`).
+Native, dependency-light Linux driver and CLI tool for the **Ajazz AK820 Pro** mechanical keyboard (`VID 0x0C45`, `PID 0x800A` / `0x8009`).
 
-See [`FINDINGS.md`](FINDINGS.md) for the complete USB HID protocol and Sonix `SN32F290` ARM Cortex-M0 firmware disassembly notes.
+Control the `0.85"` 128×128 color TFT screen (live PC hardware HUD, Spotify/browser media player, animated GIFs, milestone countdown radar), synchronize the internal RTC clock from system time, control RGB ambient lighting, and use your keyboard as a visual CI/build status indicator with keypress auto-revert.
+
+See [`FINDINGS.md`](FINDINGS.md) for the complete USB HID protocol and Sonix `SN32F290` ARM Cortex-M0 firmware reverse-engineering notes.
 
 ---
 
 <p align="center">
-  <img src="samples/04_cyber_radar.gif" width="140" alt="Cyber Radar Demo" />
+  <img src="samples/04_cyber_radar.gif" width="135" alt="Cyber Radar Demo" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="samples/radar_hero_preview.png" width="140" alt="Hero Countdown Preview" />
+  <img src="samples/hud_preview.png" width="135" alt="Live PC Hardware HUD" />
   &nbsp;&nbsp;&nbsp;&nbsp;
-  <img src="samples/radar_board_preview.png" width="140" alt="Family Board Preview" />
+  <img src="samples/media_preview.png" width="135" alt="Now Playing Media Player" />
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="samples/radar_hero_preview.png" width="135" alt="Milestone Countdown Card" />
 </p>
 
 ---
 
-## Features
+## Highlights
 
-- **TFT Screen Control**: Upload PNG, JPG, or animated GIFs to the 128×128 color display with automated RGB565 little-endian conversion and SPI flash sector alignment.
-- **RTC Clock Synchronization**: Synchronize internal keyboard date & time directly from system clock via 64-byte HID feature reports.
-- **Milestone Radar**: Track upcoming birthdays, anniversaries, and personal milestones with high-contrast countdown slides and SHA-256 deduplication.
-- **AI-Ready Custom Cards**: Render and push instant status cards or reminders with semantic color themes (`soon`, `warn`, `urgent`, `today`, `calm`, `green`).
-- **RGB Backlight Control & Ambient Presets**: Apply curated ambient profiles (`warm-white`, `cyber-cyan`, `single-on`), cycle through interactive lighting demos, or control speeds and modes.
-- **Workflow Status & Keypress Auto-Revert**: Visual compilation/task status indicator (pulses amber while running, turns green on success or red on failure, and automatically restores your idle profile on your next keypress).
+- **Live PC Hardware HUD (`ak820 hud`)**: Real-time CPU %, RAM usage, CPU/APU temperature, clock, and system uptime on your keyboard screen.
+- **Media "Now Playing" Widget (`ak820 media`)**: Automatically queries `playerctl` or native D-Bus MPRIS to display current track title, artist, and playback status for Spotify, YouTube, VLC, and browsers.
+- **CI / Build Indicator with Keypress Auto-Revert (`ak820 run -- make`)**: Pulses breathing amber while your build or tests run, switches to emerald green on pass (or bright red on failure), and **automatically restores your ambient lighting the instant you touch the keyboard to start typing again**.
+- **TFT Screen & GIF Engine (`ak820 upload`)**: Upload PNG, JPG, or animated GIFs. Automatically resizes, centers, and converts frames into 128×128 RGB565 little-endian format with SPI flash sector alignment.
+- **Internal RTC Clock Sync (`ak820 sync-clock`)**: Sets the keyboard's internal clock directly from system time via 64-byte HID feature reports.
+- **Milestone Countdown Radar (`ak820 radar`)**: Tracks upcoming birthdays, anniversaries, and personal milestones with high-contrast countdown slides and SHA-256 deduplication.
+- **Ambient Lighting Profiles (`ak820 backlight`)**: Curated ambient presets (`warm-white`, `cyber-cyan`, `single-on`), lighting showcase demo, and custom speeds/colors.
 
 ---
 
-## Installation & Permissions
+## Quick Installation
 
-### 1. Requirements
-- Linux kernel with `hidraw` support
-- Python 3.10+
-- Pillow (`python3-pil` or `pip install pillow`)
-- Wired USB connection (2.4 GHz wireless and Bluetooth modes do not expose the vendor HID display endpoints)
-
-### 2. Setup `udev` Rules
-To access `/dev/hidraw*` without `sudo`:
-
+### Option 1: Install Globally via `pipx` (Recommended)
 ```bash
-# Clone the repository
+pipx install git+https://github.com/ErvinUrban-Bratislava/ak820pro-linux.git
+```
+
+### Option 2: Clone and Install Locally
+```bash
 git clone https://github.com/ErvinUrban-Bratislava/ak820pro-linux.git
 cd ak820pro-linux
+pip install .
+```
 
-# Copy udev rule and reload
+### Setup `udev` Rules (Non-Root Access)
+To allow regular desktop users to access `/dev/hidraw*` without `sudo`:
+
+```bash
 sudo cp udev/70-ajazz-ak820pro.rules /etc/udev/rules.d/
 sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-### 3. Verify Connection
+Verify your keyboard is detected:
 ```bash
-python3 ak820_ctrl.py probe
+ak820 probe
 ```
-Expected output:
+Output:
 ```text
 TFT Data Interface (0xFF68):    /dev/hidraw2
 Control/RTC Interface (0xFF13): /dev/hidraw3
@@ -64,104 +71,106 @@ Control/RTC Interface (0xFF13): /dev/hidraw3
 
 ---
 
-## Usage
+## Usage Guide
 
-### 1. Synchronize Internal RTC Clock
+### 1. Live PC Hardware HUD
+Push a real-time system stats card (CPU %, RAM %, CPU temp, uptime, and clock) to the TFT screen:
 ```bash
-python3 ak820_ctrl.py sync-clock
+# Push current system snapshot
+ak820 hud
+
+# Or keep it updating continuously every 15 seconds:
+ak820 hud --watch 15
 ```
 
-### 2. Upload Any Image or Animated GIF
+### 2. "Now Playing" Media Card
+Display currently playing media from Spotify, Chrome, Firefox, VLC, or any MPRIS-compatible player:
+```bash
+# Push current track info
+ak820 media
+
+# Or monitor playback changes continuously:
+ak820 media --watch 10
+```
+
+### 3. Developer Mode: Wrap Any Shell Command with Keypress Auto-Revert
+Turn your keyboard backlight into a physical CI / build status alert:
+```bash
+# Compiles code: pulses amber while compiling -> green on success / red on failure
+# Automatically reverts to your idle profile on your NEXT keypress!
+ak820 run --label "Compile" -- make -j16
+
+# Run test suites:
+ak820 run --label "Pytest" -- pytest -v
+```
+
+### 4. Upload Custom Images & Animated GIFs
+Any image or GIF is automatically cropped, fitted, and converted to the native 128×128 RGB565 LE format:
 ```bash
 # Upload bundled Bongo Cat animation
-python3 ak820_ctrl.py upload presets/bongo_cat.gif
+ak820 upload presets/bongo_cat.gif
 
-# Upload custom GIF, PNG, or JPG (auto-resized to 128x128 RGB565 LE)
-python3 ak820_ctrl.py upload /path/to/image.png --fit fill
-python3 ak820_ctrl.py upload /path/to/banner.jpg --fit contain
+# Upload any GIF or image with custom fit (fill, contain, stretch)
+ak820 upload /path/to/animation.gif --fit fill
+ak820 upload /path/to/wallpaper.png --fit contain
 ```
 
-### 3. Milestone Radar (`radar` & `events`)
-Reads recurring events from `~/.config/ak820/events.json` (or path set via `$AK820_EVENTS_PATH` or `--config`), computes days remaining and milestone years/ages, and pushes a countdown screen:
-
+### 5. Synchronize Internal RTC Clock
 ```bash
-# Quickstart: initialize example events config
+ak820 sync-clock
+```
+
+### 6. Milestone Countdown Radar & Custom AI Cards
+Track family birthdays, anniversaries, or project milestones:
+```bash
+# Initialize example config
 mkdir -p ~/.config/ak820
 cp events.example.json ~/.config/ak820/events.json
 
-# List upcoming family milestones (add --json for AI agents)
-python3 ak820_ctrl.py events list
+# View upcoming milestones
+ak820 events list
 
-# Add or update a milestone
-python3 ak820_ctrl.py events add --title "Daughter's Birthday" --short "DAUGHTER" --date "2025-11-06" --category birthday
+# Add a milestone
+ak820 events add --title "Daughter's Birthday" --short "DAUGHTER" --date "2025-11-06" --category birthday
 
-# Push the 2-slide alternating Radar (Hero Countdown + 3-Row Family Board, ~5s per slide)
-python3 ak820_ctrl.py radar --view cycle
+# Push 2-slide alternating radar (Hero Countdown + 3-Row Family Board)
+ak820 radar --view cycle --sync-clock
 
-# Push Hybrid mode (2 loops of Bongo Cat + Hero Countdown + 3-Row Family Board)
-python3 ak820_ctrl.py radar --view hybrid
-
-# Push static single-frame Hero Card or 3-Row Board
-python3 ak820_ctrl.py radar --view hero
-python3 ak820_ctrl.py radar --view board
+# Push custom AI / reminder sticky-note card
+ak820 card --title "REMINDER" --value "DEPLOY V1.0" --sub "Production Release" --footer "Ready to ship" --theme warn
 ```
 
-### 4. AI-Ready Custom Status / Sticky-Note Card (`card`)
-Any script or AI agent can push an instant 1-frame high-contrast card:
-```bash
-python3 ak820_ctrl.py card --title "REMINDER" --value "BUY GIFT" --sub "Daughter 1st B-Day" --footer "Nov 06 (17d)" --theme warn
-```
-
-### 5. Backlight & Ambient Lighting Showcase (`backlight`)
-Configure your preferred ambient lighting profile:
+### 7. RGB Backlight & Ambient Presets
 ```bash
 # Showcase curated presets live on your desk (6 seconds each):
-python3 ak820_ctrl.py backlight demo
+ak820 backlight demo
 
-# List all supported modes and presets
-python3 ak820_ctrl.py backlight list
+# Apply and save ambient profile as default idle:
+ak820 backlight set --preset cyber-cyan --save
+ak820 backlight set --preset warm-white --save
 
-# Apply and save your favorite preset as default idle ambient:
-python3 ak820_ctrl.py backlight set --preset warm-white --save
-python3 ak820_ctrl.py backlight set --preset cyber-cyan --save
-python3 ak820_ctrl.py backlight set --preset single-on --save
-
-# Manual customization:
-python3 ak820_ctrl.py backlight set --mode breath --color "#FF8C00" --speed 3 --brightness 4
-python3 ak820_ctrl.py backlight off
-```
-
-### 6. Workflow Status & Notification Indicators (`status` & `run`)
-Ambient status indicators with **auto-revert on your next keypress**:
-```bash
-# Set status directly from any script or automation:
-python3 ak820_ctrl.py status in-progress --label "Running Build" # Breathing Amber
-python3 ak820_ctrl.py status success     --label "Build Passed"  # Emerald Green (waits for keypress)
-python3 ak820_ctrl.py status failed      --label "Build Failed"  # Bright Red (waits for keypress)
-python3 ak820_ctrl.py status idle                                # Immediate restore to idle profile
-
-# Or wrap any long-running shell command:
-python3 ak820_ctrl.py run --label "Compile" -- make -j16
-# (Pulses amber while compiling -> pulses emerald green or red on finish -> reverts when you touch the keyboard!)
+# Manual adjustment:
+ak820 backlight set --mode breath --color "#FF8C00" --speed 3 --brightness 4
+ak820 backlight off
 ```
 
 ---
 
-## Automated Daily Sync (`systemd` User Timer)
+## Automated Systemd Timers (Optional)
 
-To automatically update your countdown radar and sync the clock every morning at `07:00`:
+Update your countdown radar and sync the RTC clock every morning at `07:00`:
 
-Create `~/.config/systemd/user/ak820-radar.service`:
+1. Create `~/.config/systemd/user/ak820-radar.service`:
 ```ini
 [Unit]
-Description=Ajazz AK820 Pro Radar & Clock Sync
+Description=Ajazz AK820 Pro Daily Radar & Clock Sync
 
 [Service]
 Type=oneshot
-ExecStart=/usr/bin/python3 /path/to/ak820pro-linux/ak820_ctrl.py radar --view cycle --sync-clock
+ExecStart=%h/.local/bin/ak820 radar --view cycle --sync-clock
 ```
 
-Create `~/.config/systemd/user/ak820-radar.timer`:
+2. Create `~/.config/systemd/user/ak820-radar.timer`:
 ```ini
 [Unit]
 Description=Run Ajazz AK820 Pro Radar daily
@@ -174,7 +183,7 @@ Persistent=true
 WantedBy=timers.target
 ```
 
-Enable and start:
+3. Enable the timer:
 ```bash
 systemctl --user daemon-reload
 systemctl --user enable --now ak820-radar.timer
@@ -182,24 +191,38 @@ systemctl --user enable --now ak820-radar.timer
 
 ---
 
-## Testing
+## Frequently Asked Questions (FAQ)
 
-Run the included unit test suite:
-```bash
-python3 -m unittest discover -s tests -v
-```
+### Why does TFT screen upload require a wired USB cable?
+The Ajazz AK820 Pro firmware explicitly restricts vendor-specific HID endpoints to wired USB mode. In 2.4 GHz wireless mode (`PID 0x8009`) and Bluetooth mode, the wireless receiver only enumerates standard USB HID keyboard/mouse endpoints (`Usage Page 0x01`), completely omitting vendor Usage Pages `0xFF68` (TFT data pipe) and `0xFF13` (Control pipe).
+
+### How does this compare to OpenRGB?
+[OpenRGB](https://openrgb.org/) only controls basic RGB LED matrix patterns and colors. It cannot upload images or GIFs to the TFT display, cannot synchronize the internal RTC clock, does not provide hardware HUD/media widgets, and does not support keypress-aware build status indicators. `ak820pro-linux` provides full control over both the TFT display engine and the keyboard MCU.
+
+### What keyboards are supported?
+- **Ajazz AK820 Pro** (`VID 0x0C45`, `PID 0x800A` / `0x8009`) — Fully tested and verified.
+- Compatible with other Sonix `SN32F290` based keyboards sharing the same HID report descriptor architecture (e.g. certain AK820 Max variants).
 
 ---
 
-## Hardware Protocol & Disassembly
+## Technical Architecture & Findings
 
-For technical details on:
-- Sonix `SN32F290` ARM Cortex-M0 MCU interrupt handling
+For deep-dive reverse-engineering details, including:
+- Sonix `SN32F290` ARM Cortex-M0 MCU disassembly and memory maps
 - 3-chunk two-stage sub-packet alignment protocol (`align_data_pipe`)
-- Firmware watchdog timers and SPI flash erase timing
-- USB HID Feature Reports and endpoints
+- Firmware 2.0-second chunk watchdog (`[0x200000F0]`) and unbuffered 4096-byte RAM buffer race condition (`0x2000030C`)
+- SPI flash animation layout (`0x540000`) and RGB565 little-endian pixel framing
 
 See [`FINDINGS.md`](FINDINGS.md).
+
+---
+
+## Testing
+
+Run the automated test suite:
+```bash
+python3 -m unittest discover -s tests -v
+```
 
 ---
 

@@ -838,7 +838,19 @@ def main():
     )
     card_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already on screen")
 
-    # 4. events (Manage milestones configuration)
+    # 4. hud / stats (Live PC Hardware HUD)
+    hud_parser = subparsers.add_parser("hud", aliases=["stats"], help="Render and upload live PC system stats HUD (CPU, RAM, Temp, Uptime)")
+    hud_parser.add_argument("--save-preview", help="Save rendered PNG preview to file instead of uploading")
+    hud_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already on screen")
+    hud_parser.add_argument("--watch", type=float, default=0, help="Continuously refresh every N seconds (e.g. --watch 15)")
+
+    # 5. media (Now Playing Media Card)
+    media_parser = subparsers.add_parser("media", help="Render and upload Now Playing music/media card (Spotify, browser, VLC)")
+    media_parser.add_argument("--save-preview", help="Save rendered PNG preview to file instead of uploading")
+    media_parser.add_argument("--force", action="store_true", help="Upload even if identical payload is already on screen")
+    media_parser.add_argument("--watch", type=float, default=0, help="Continuously refresh every N seconds (e.g. --watch 10)")
+
+    # 6. events (Manage milestones configuration)
     ev_parser = subparsers.add_parser("events", help="List, add, or remove family milestones")
     ev_parser.add_argument("--config", help="Path to events JSON config (default: ~/.config/ak820/events.json or $AK820_EVENTS_PATH)")
     ev_sub = ev_parser.add_subparsers(dest="events_action", required=False)
@@ -950,6 +962,20 @@ def main():
         print(f"Saved previews to {p1} and {p2}")
         return
 
+    if args.command in ("hud", "stats") and getattr(args, "save_preview", None):
+        import widgets
+        img = widgets.render_hud_card()
+        img.save(args.save_preview)
+        print(f"Saved HUD preview to {args.save_preview}")
+        return
+
+    if args.command == "media" and getattr(args, "save_preview", None):
+        import widgets
+        img = widgets.render_media_card()
+        img.save(args.save_preview)
+        print(f"Saved media preview to {args.save_preview}")
+        return
+
     tft_dev, ctrl_dev = find_hidraw_devices()
 
     if args.command == "probe":
@@ -957,7 +983,7 @@ def main():
         print(f"Control/RTC Interface (0xFF13): {ctrl_dev or 'NOT FOUND'}")
         return
 
-    need_tft = args.command in ("upload", "radar", "card")
+    need_tft = args.command in ("upload", "radar", "card", "hud", "stats", "media")
     if not ctrl_dev or (need_tft and not tft_dev):
         sys.exit("Error: AK820 Pro USB HID interfaces not found. Ensure the keyboard is connected via USB cable.")
 
@@ -978,6 +1004,40 @@ def main():
             img = mr.render_custom_card(args.title, args.value, args.sub, args.footer, args.theme)
             label = f"card:{args.title}:{args.value}:{args.sub}:{args.footer}:{args.theme}"
             upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
+        elif args.command in ("hud", "stats"):
+            import widgets
+            def push_hud():
+                stats = widgets.get_system_stats()
+                img = widgets.render_hud_card(stats)
+                label = f"hud:{stats['cpu_pct']}:{stats['ram_pct']}:{stats['temp_c']}:{stats['time']}"
+                upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
+
+            push_hud()
+            if getattr(args, "watch", 0) > 0:
+                print(f"Watching system HUD (refreshing every {args.watch}s, Ctrl+C to stop)...")
+                try:
+                    while True:
+                        time.sleep(args.watch)
+                        push_hud()
+                except KeyboardInterrupt:
+                    print("\nStopped.")
+        elif args.command == "media":
+            import widgets
+            def push_media():
+                media = widgets.get_media_status()
+                img = widgets.render_media_card(media)
+                label = f"media:{media['status']}:{media['title']}:{media['artist']}"
+                upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
+
+            push_media()
+            if getattr(args, "watch", 0) > 0:
+                print(f"Watching media player (refreshing every {args.watch}s, Ctrl+C to stop)...")
+                try:
+                    while True:
+                        time.sleep(args.watch)
+                        push_media()
+                except KeyboardInterrupt:
+                    print("\nStopped.")
         elif args.command == "backlight":
             action = args.bl_action or "set"
             if action == "demo":

@@ -136,5 +136,41 @@ class TestMilestoneRadar(unittest.TestCase):
                 os.environ["AK820_EVENTS_PATH"] = orig_env
 
 
+class TestWidgets(unittest.TestCase):
+    def test_hud_card_rendering(self):
+        import widgets
+        dummy_stats = {
+            "cpu_pct": 34.5,
+            "ram_pct": 52.0,
+            "ram_used_gb": 8.5,
+            "ram_total_gb": 16.0,
+            "temp_c": 55.0,
+            "uptime": "2d 4h",
+            "hostname": "TESTPC",
+            "time": "14:30",
+        }
+        img = widgets.render_hud_card(dummy_stats)
+        self.assertEqual(img.size, (128, 128))
+        self.assertEqual(img.mode, "RGB")
+
+    def test_media_card_rendering(self):
+        import widgets
+        dummy_media = {
+            "active": True,
+            "status": "Playing",
+            "title": "Bohemian Rhapsody",
+            "artist": "Queen",
+            "album": "A Night at the Opera",
+        }
+        img = widgets.render_media_card(dummy_media)
+        self.assertEqual(img.size, (128, 128))
+        self.assertEqual(img.mode, "RGB")
+
+        # Test paused / idle state
+        dummy_idle = {"active": False, "status": "Stopped", "title": "No Media", "artist": "", "album": ""}
+        img_idle = widgets.render_media_card(dummy_idle)
+        self.assertEqual(img_idle.size, (128, 128))
+
+
 if __name__ == "__main__":
     unittest.main()
