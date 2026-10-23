@@ -20,6 +20,7 @@
 | `v0.13.0` | 2026-10-24 | Done | Performance — Alignment-Skip on Known-Clean Pipe (§3.5/§4.1, B4 closed): `state.pipe_known_clean()`/`mark_pipe()` persist a strict-boolean `pipe_clean` flag (atomic read-modify-write, fails dirty on absent/corrupt); repeat uploads skip the ~1.6–2 s `align_data_pipe` after a fully-ACKed SAVE, flip dirty pessimistically before streaming so any crash re-aligns next run; `FakeTransport` starts dirty (`start_idx=37`) proving the skip is state-driven; measured 1.50 s → 0.75 s vs simulator | `python3 -m unittest` 186/186 |
 | `v0.14.0` | 2026-10-24 | Done | Ops & Observability (B6/B7 + §6.5): `logging` to stderr + global `--verbose/-v` (stdout reserved for `events list --json`); single templated `playerctl -f '{{status}}\t{{title}}\t{{artist}}\t{{album}}' metadata` call replaces four subprocesses (§4.3); shipped `systemd/ak820-radar.{service,timer}` + `ak820-hud.service` (`Restart=on-failure` pairs with exit 75); global `--dry-run` (render + sha256 digest + chunk count, zero USB, zero state writes) via new `ak820/renderers.py`; `sync_clock` DST fall-back note (§6.5); `wait_for_keypress` stdin-EOF fix — `/dev/null` no longer a false keypress | `python3 -m unittest` 200/200 |
 | `v0.15.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §14): D10 `radar --date <invalid>` traceback → `ConfigError` exit 6 (D4 never covered the `--date` override; live/preview/dry-run all affected) + D11 missing upload file traceback → new `FileMissingError` exit 8 (README table, `DOCUMENTED_CODES`, package/shim re-exports synced); `run` exit-transparency + lint-lane audit observations recorded | `python3 -m unittest` 214/214 + live exit probes |
+| `v0.16.0` | 2026-10-24 | Done | Modular Package Refactoring (REVIEW.md §15): `cli.py` (289 lines, at the §10 budget) split three ways — new `ak820/parser.py` (argparse surface, 104 lines) + new `ak820/handlers.py` (device-bound `(args, dev)` handlers + `DEVICE_HANDLERS` + `run_watch_loop`, 114 lines) + slim 106-line `cli.py` keeping offline routing, `--dry-run`, discovery and the §3.4 exit-code `main()`; every split name re-exported (identity, not copy) so `ak820.cli.*`, `ak820.*` and the `ak820_ctrl` shim are byte-for-byte compatible entry points | `python3 -m unittest` 228/228 + live `probe`/`--dry-run` via shim |
 
 ---
 
@@ -125,4 +126,14 @@
   - §14.2 records accepted designs (`run` child-exit transparency) and the queued Tier C
     lane: numpy RGB565 fast path, ruff/mypy gate, `events remove` no-match UX.
   - New `tests/test_reaudit_v015.py` (14 offline tests, zero hardware).
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [x] **`v0.16.0`** — Modular Package Refactoring: `cli.py` split (§15):
+  - New `ak820/parser.py`: the argparse tree (`build_parser`) — what the CLI accepts, nothing else.
+  - New `ak820/handlers.py`: device-bound `(args, dev)` handlers, `DEVICE_HANDLERS`, `TFT_COMMANDS`, `run_watch_loop`.
+  - `cli.py` keeps offline routing, `--dry-run`, device discovery, `_configure_logging`, and the
+    §3.4 exit-code `main()`; re-exports every split name (same object, no copy drift) so
+    `ak820.cli`, `ak820/__init__`, and the `ak820_ctrl` shim are unchanged.
+  - New `tests/test_modularity_v016.py` (14 offline tests): re-export identity, shim parity,
+    parser↔handler structural parity, <300-line budget, fresh-interpreter import (no cycle).
   - Verify `python3 -m unittest discover -s tests` passes 100%.

@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import ak820_ctrl
-from ak820 import actions, backlight, cli, state, transport
+from ak820 import actions, backlight, cli, handlers, state, transport
 
 
 class TestParserParity(unittest.TestCase):
@@ -159,7 +159,8 @@ class TestWatchLoop(unittest.TestCase):
             calls.append(1)
             raise KeyboardInterrupt
 
-        with mock.patch.object(cli.time, "sleep"), contextlib.redirect_stdout(io.StringIO()):
+        # v0.16.0: run_watch_loop lives in handlers.py (cli re-exports it)
+        with mock.patch.object(handlers.time, "sleep"), contextlib.redirect_stdout(io.StringIO()):
             cli.run_watch_loop(push, 10, "test HUD")
         self.assertEqual(len(calls), 1)
 

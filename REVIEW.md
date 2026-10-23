@@ -1112,3 +1112,35 @@ findings below.
 - `ruff` + `mypy` gate once the tools are installed (B3 remainder).
 - `events remove <target>` exits 0 when nothing matched — consider a friendly
   non-zero path (minor UX; no data risk).
+
+---
+
+## 15. Modular Package Refactoring — `cli.py` Split (v0.16.0, 2026-10-24)
+
+`cli.py` had reached 289 lines — within budget but carrying three distinct
+concerns (argparse surface, device-bound handlers, routing/exit-code `main()`).
+v0.16.0 splits it three ways, all modules comfortably < 300 lines:
+
+| Module | Lines | Single responsibility |
+|---|---|---|
+| `ak820/parser.py` (new) | 104 | The argparse tree: `build_parser()` flag-for-flag identical |
+| `ak820/handlers.py` (new) | 114 | Device-bound `(args, dev)` handlers + `DEVICE_HANDLERS` + `TFT_COMMANDS` + `run_watch_loop` |
+| `ak820/cli.py` | 106 | Offline-first routing, `--dry-run`, hidraw discovery, `_configure_logging`, §3.4 exit-code `main()` |
+
+**Compatibility contract (locked by `tests/test_modularity_v016.py`):**
+
+- `cli.build_parser is parser.build_parser`, `cli.run_watch_loop is
+  handlers.run_watch_loop`, `cli.DEVICE_HANDLERS is handlers.DEVICE_HANDLERS`
+  — re-exports are the *same objects*, so `mock.patch("ak820.cli._dispatch")`,
+  `ak820.build_parser`, and the `ak820_ctrl` shim keep working untouched.
+- Structural parity: every parsed subcommand except the offline pair
+  (`events`, `probe`) has a `DEVICE_HANDLERS` entry — dispatch can never
+  `KeyError` on a command the parser accepted.
+- Fresh-interpreter import of `ak820.cli`/`parser`/`handlers`/`ak820_ctrl`
+  proves no import cycle was introduced.
+- §10.2 dependency rule untouched: no fd/io moved outside `transport.py`
+  (the existing invariant test globs all of `ak820/*.py` and passed).
+
+Suite **214/214 → 228/228**; live verification on the attached keyboard:
+`ak820_ctrl.py probe` (rc 0, both hidraw nodes) and `--dry-run card`
+(sha256 digest + chunk count, rc 0) through the unchanged shim.
