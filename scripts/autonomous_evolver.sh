@@ -3,7 +3,7 @@ set -uo pipefail
 
 REPO_DIR="/home/ervin/code/ak820pro-linux"
 export PATH="/home/ervin/.local/bin:/home/ervin/.nvm/versions/node/v24.21.0/bin:/usr/local/bin:/usr/bin:/bin:${PATH}"
-MAX_ITERATIONS="${1:-15}"
+MAX_ITERATIONS="${1:-100}"
 LOG_DIR="${REPO_DIR}/state/evolver_logs"
 mkdir -p "$LOG_DIR"
 
@@ -32,7 +32,7 @@ smoke_test() {
   sleep 1
 
   # 1. Compile test: verify all Python files compile cleanly
-  python3 -m py_compile *.py tests/*.py 2>/dev/null || python3 -m py_compile *.py || return 1
+  python3 -m compileall -q . || return 1
 
   # 2. Unit test suite: all tests must pass 100%
   python3 -m unittest discover -s tests || return 1
@@ -44,7 +44,7 @@ smoke_test() {
 }
 
 log "Starting Autonomous Evolver for ak820pro-linux in ${REPO_DIR}"
-log "Max iterations: ${MAX_ITERATIONS}"
+log "Max iterations configured: ${MAX_ITERATIONS}"
 
 for i in $(seq 1 "$MAX_ITERATIONS"); do
   wait_for_cooldown
@@ -63,12 +63,15 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   if [[ -n "$QUEUED_ITEM" ]]; then
     MODE_INSTRUCTION="PRIORITY QUEUE: Implement the queued specification for ${NEXT_TAG} from ITERATIONS.md. Follow all technical requirements and bugfix specifications defined there."
   else
-    # Cadence rotation
+    # Continuous Cadence rotation once priority queue completes:
+    # 1. Modular Package Refactoring (<300 LOC per domain module)
+    # 2. Protocol Reliability & FakeTransport Mocking
+    # 3. Independent Deep Re-Audit & Optimization Discovery
     CADENCE_MOD=$(( NEXT_MINOR % 3 ))
     if [[ "$CADENCE_MOD" -eq 1 ]]; then
-      MODE_INSTRUCTION="MODE: FEATURE REFACTOR. Continue the modular package refactoring from REVIEW.md. Extract single-responsibility modules (<300 lines each) with clean unit tests."
+      MODE_INSTRUCTION="MODE: MODULAR PACKAGE REFACTORING. Continue splitting monolithic concerns out of ak820_ctrl.py into dedicated single-responsibility modules in ak820/ (<300 lines each) with clean regression tests. Keep backward compatibility shims intact."
     elif [[ "$CADENCE_MOD" -eq 2 ]]; then
-      MODE_INSTRUCTION="MODE: RELIABILITY & ROBUSTNESS. Add protocol-level error handling, disconnect recovery, timeout guards, and FakeTransport simulation tests."
+      MODE_INSTRUCTION="MODE: RELIABILITY & ROBUSTNESS. Add protocol-level error handling, disconnect recovery, timeout guards, and FakeTransport simulation tests. Ensure full CI coverage with zero hardware attached."
     else
       MODE_INSTRUCTION="MODE: COMPREHENSIVE RE-AUDIT. Perform a complete deep architectural audit of the current codebase. Update REVIEW.md, record solved defects, and queue the next actionable improvements in ITERATIONS.md."
     fi
@@ -98,6 +101,9 @@ __MODE_INSTRUCTION__
    - Update `ITERATIONS.md`: mark `[x] __NEXT_TAG__` in the Priority Queue and add a 1-line summary to the Summary Table.
    - Commit cleanly: `git add -A && git commit -m "feat(__NEXT_TAG__): <concise summary>"`.
    - Output a 3-line summary and **EXIT IMMEDIATELY** (never edit files after tagging).
+5. **Continuous Improvement & Diminishing Returns**:
+   - Continue improving the codebase across iterations as long as meaningful improvements exist (modularity, error handling, performance, test coverage, code quality).
+   - Only if all possible improvements from REVIEW.md, architectural refactoring, and audits are fully exhausted and the project is in a complete state, output `<STATUS>PROJECT_COMPLETE</STATUS>`.
 EOF
 
   sed -i "s/__LAST_TAG__/${LAST_TAG}/g; s/__NEXT_TAG__/${NEXT_TAG}/g; s|__MODE_INSTRUCTION__|${MODE_INSTRUCTION}|g" "$PROMPT_FILE"
@@ -123,7 +129,13 @@ EOF
     git clean -fd
   fi
 
+  # Check if agent signaled complete
+  if grep -q "<STATUS>PROJECT_COMPLETE</STATUS>" "$ITER_LOG" 2>/dev/null; then
+    log "🏁 Agent signaled project is complete and all meaningful improvements are exhausted. Exiting cleanly."
+    break
+  fi
+
   sleep 5
 done
 
-log "Autonomous overnight evolution of ${MAX_ITERATIONS} iterations finished."
+log "Autonomous overnight evolution loop finished."
