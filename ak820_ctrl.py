@@ -12,7 +12,8 @@ Protocol reverse-engineered from the official Windows DeviceDriver.exe (Ghidra +
     to prevent Linux hidraw from stripping leading zero data bytes) + 64-byte Input ACK read-back
   - Upload sequence: START (04 18) -> IMAGE_CFG (04 72 03) -> 4096B chunks + ACK (01 5A 02) -> SAVE (04 02)
 
-Exit codes: 0 = success, 5 = upload incomplete (device dropped chunk ACKs; nothing was flashed).
+Exit codes: 0 = success, 5 = upload incomplete (device dropped chunk ACKs; nothing was flashed),
+6 = invalid events config (malformed event date; nothing was saved or rendered).
 """
 
 import argparse
@@ -992,6 +993,7 @@ def _main_impl():
                     print(f"{u['title']:<22} {str(u['next_date']):<12} {str(u['days_left']) + 'd':<8} {u['milestone_str']:<12} {u['theme_key']}")
             return
         elif action == "add":
+            mr.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date
             ev_id = args.short.lower().replace(" ", "-")
             events = [e for e in cfg.get("events", []) if e.get("id") != ev_id and e.get("title") != args.title]
             events.append({
@@ -1195,14 +1197,20 @@ def _main_impl():
 def main():
     """Console entry point (ak820 / ak820-ctrl scripts).
 
-    Maps UploadIncompleteError (Defect D2) to exit code 5 so scripts and
-    systemd units can distinguish a dropped-ACK upload from other failures.
+    Maps UploadIncompleteError (Defect D2) to exit code 5 and ConfigError
+    (Defects D4/D5, invalid event dates) to exit code 6 so scripts and
+    systemd units get a friendly message instead of a raw traceback.
     """
+    import milestone_radar as mr
+
     try:
         _main_impl()
     except UploadIncompleteError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(UploadIncompleteError.exit_code)
+    except mr.ConfigError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(mr.ConfigError.exit_code)
 
 
 if __name__ == "__main__":

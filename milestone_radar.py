@@ -134,6 +134,59 @@ def _ordinal(n: int) -> str:
     return f"{n}{suffix}"
 
 
+class ConfigError(Exception):
+    """Raised when the events config contains invalid data (Defects D4/D5).
+
+    Mapped to exit code 6 in `ak820_ctrl.main()` so a single typo in
+    events.json fails the daily systemd timer with a friendly message
+    instead of a raw ValueError traceback.
+    """
+
+    exit_code = 6
+
+
+def _safe_date(year: int, month: int, day: int) -> datetime.date:
+    """Build a date, clamping Feb 29 -> Feb 28 ONLY on non-leap years (D5).
+
+    The previous blanket `except ValueError` fallback assumed Feb-29-on-non-leap
+    was the only possible failure and itself crashed on any other invalid
+    component (e.g. month 13 -> `date(y, 13, 28)` -> ValueError). Every other
+    invalid combination now raises ConfigError with the offending components.
+    """
+    try:
+        return datetime.date(year, month, day)
+    except ValueError:
+        if (month, day) == (2, 29):  # the ONLY expected failure mode
+            return datetime.date(year, 2, 28)
+        raise ConfigError(
+            f"Invalid event date components: {year:04d}-{month:02d}-{day:02d}"
+        )
+
+
+def parse_event_date(raw: str) -> Tuple[Optional[int], int, int]:
+    """Validate an event date at input time (D4): 'YYYY-MM-DD' or 'MM-DD'.
+
+    Returns (year, month, day); year is None for recurring MM-DD dates.
+    Raises ConfigError with an informative message on anything else, so
+    `events add` fails fast and bad data never reaches render time.
+    """
+    if not isinstance(raw, str):
+        raise ConfigError(f"Invalid date {raw!r}: expected YYYY-MM-DD or MM-DD")
+    parts = raw.split("-")
+    try:
+        if len(parts) == 3:
+            y, m, d = (int(p) for p in parts)
+            datetime.date(y, m, d)
+            return y, m, d
+        if len(parts) == 2:
+            m, d = (int(p) for p in parts)
+            datetime.date(2024, m, d)  # 2024 is a leap year: validates Feb 29
+            return None, m, d
+    except ValueError:
+        pass
+    raise ConfigError(f"Invalid date {raw!r}: expected YYYY-MM-DD or MM-DD")
+
+
 def load_events_config(config_path: Optional[str] = None) -> Dict:
     path = config_path or get_default_events_path()
     if not os.path.exists(path):
@@ -156,25 +209,13 @@ def compute_upcoming_events(cfg: Dict, today: Optional[datetime.date] = None) ->
     upcoming = []
     for ev in cfg.get("events", []):
         raw_date = ev.get("date", "")
-        parts = [int(p) for p in raw_date.split("-")]
-        if len(parts) == 3:
-            orig_year, month, day = parts
-        elif len(parts) == 2:
-            orig_year, month, day = today.year, parts[0], parts[1]
-        else:
-            continue
+        orig_year, month, day = parse_event_date(raw_date)  # D4: friendly error, no traceback
+        if orig_year is None:
+            orig_year = today.year
 
-        try:
-            next_date = datetime.date(today.year, month, day)
-        except ValueError:
-            # Handle Feb 29 on non-leap years
-            next_date = datetime.date(today.year, month, 28)
-
+        next_date = _safe_date(today.year, month, day)  # D5: narrow Feb-29 clamp only
         if next_date < today:
-            try:
-                next_date = datetime.date(today.year + 1, month, day)
-            except ValueError:
-                next_date = datetime.date(today.year + 1, month, 28)
+            next_date = _safe_date(today.year + 1, month, day)
 
         days_left = (next_date - today).days
         years = next_date.year - orig_year
