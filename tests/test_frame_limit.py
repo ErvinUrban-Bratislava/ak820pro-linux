@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ak820_ctrl
 import milestone_radar as mr
+from ak820 import state
 from test_upload import FakeTransport
 
 
@@ -34,7 +35,7 @@ class TestFrameLimit(unittest.TestCase):
     def test_256_frames_rejected_before_any_usb_packet(self):
         dev = FakeTransport()
         frames = [b"\xAB" * 100] * 256
-        with mock.patch.object(mr, "save_payload_hash") as save:
+        with mock.patch.object(state, "save_payload_hash") as save:
             with self.assertRaises(ValueError) as ctx:
                 ak820_ctrl.upload_frames_to_screen(
                     dev, frames, None, label="toolong", force=True
@@ -49,7 +50,7 @@ class TestFrameLimit(unittest.TestCase):
     def test_255_frames_upload_valid(self):
         dev = FakeTransport()
         frames = [b"\xAB" * 100] * 255
-        with mock.patch.object(mr, "save_payload_hash") as save:
+        with mock.patch.object(state, "save_payload_hash") as save:
             res = ak820_ctrl.upload_frames_to_screen(
                 dev, frames, None, label="edge", force=True
             )

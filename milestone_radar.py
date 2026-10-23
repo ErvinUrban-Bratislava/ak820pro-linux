@@ -9,14 +9,20 @@ and custom AI sticky-note cards).
 """
 
 import datetime
-import hashlib
 import json
 import os
 from typing import Dict, List, Optional, Tuple
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw
 
-SCREEN_W = 128
-SCREEN_H = 128
+# v0.8.0 render_common (m8): screen constants, font path catalogs, and the
+# lru_cache'd font loader are shared with widgets.py via ak820.screen; payload
+# dedup persistence moved to ak820.state (§2.1 layering inversion fix).
+from ak820.screen import FONT_BOLD_PATHS, FONT_MONO_PATHS, FONT_NARROW_PATHS, SCREEN_H, SCREEN_W, _load_font
+from ak820.state import (  # noqa: F401  (re-exported for backward compatibility)
+    DEFAULT_STATE_PATH,
+    check_and_record_payload_hash,
+    save_payload_hash,
+)
 
 def get_default_events_path() -> str:
     """Return default path to ak820 events config with env/legacy/XDG fallback."""
@@ -30,19 +36,6 @@ def get_default_events_path() -> str:
 
 
 DEFAULT_EVENTS_PATH = get_default_events_path()
-DEFAULT_STATE_PATH = os.path.expanduser("~/.cache/ak820_screen_state.json")
-
-FONT_BOLD_PATHS = [
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-]
-FONT_NARROW_PATHS = [
-    "/usr/share/fonts/truetype/liberation/LiberationSansNarrow-Bold.ttf",
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-]
-FONT_MONO_PATHS = [
-    "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
-]
 
 THEMES = {
     "today": {
@@ -106,16 +99,6 @@ THEMES = {
         "tag": "READY",
     },
 }
-
-
-def _load_font(paths: List[str], size: int) -> ImageFont.FreeTypeFont:
-    for p in paths:
-        if os.path.exists(p):
-            try:
-                return ImageFont.truetype(p, size)
-            except OSError:
-                continue
-    return ImageFont.load_default()
 
 
 def _fit_text_font(draw: ImageDraw.ImageDraw, text: str, paths: List[str], max_size: int, min_size: int, max_width: int):
@@ -463,29 +446,5 @@ def render_custom_card(
     return img
 
 
-def check_and_record_payload_hash(payload: bytes, mode_desc: str, force: bool = False) -> Tuple[bool, str]:
-    """Return (should_upload, sha256_hex). Skips upload if identical payload is already on screen."""
-    digest = hashlib.sha256(payload).hexdigest()
-    if not force and os.path.exists(DEFAULT_STATE_PATH):
-        try:
-            with open(DEFAULT_STATE_PATH, "r", encoding="utf-8") as f:
-                state = json.load(f)
-            if state.get("sha256") == digest:
-                return False, digest
-        except Exception:
-            pass
-    return True, digest
-
-
-def save_payload_hash(digest: str, mode_desc: str):
-    os.makedirs(os.path.dirname(DEFAULT_STATE_PATH), exist_ok=True)
-    with open(DEFAULT_STATE_PATH, "w", encoding="utf-8") as f:
-        json.dump(
-            {
-                "sha256": digest,
-                "mode": mode_desc,
-                "updated_at": datetime.datetime.now().isoformat(timespec="seconds"),
-            },
-            f,
-            indent=2,
-        )
+# check_and_record_payload_hash / save_payload_hash moved to ak820.state
+# (v0.8.0) and are re-exported above for backward compatibility.

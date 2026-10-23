@@ -23,11 +23,12 @@ import select
 import subprocess
 import sys
 import time
-from PIL import Image, ImageOps
 
-# v0.7.0 modular package (REVIEW.md §10): protocol framing, the transport seam,
-# and the fd-free AK820Pro state machine live in `ak820/`. Everything public is
-# re-exported here so every existing `ak820_ctrl.<name>` import keeps working.
+# v0.7.0/v0.8.0 modular package (REVIEW.md §10): protocol framing, the transport
+# seam, the fd-free AK820Pro state machine, the RGB565 screen pipeline, and the
+# dedup state live in `ak820/`. Everything public is re-exported here so every
+# existing `ak820_ctrl.<name>` import keeps working.
+from ak820 import state
 from ak820.device import AK820Pro, stream_payload
 from ak820.errors import (  # noqa: F401
     AK820Error,
@@ -58,6 +59,16 @@ from ak820.protocol import (  # noqa: F401
     build_payload,
     parse_hex_color,
     parse_mode,
+)
+from ak820.screen import (  # noqa: F401
+    RGB565_FRAME_BYTES,
+    fit_image,
+    image_to_rgb565,
+    load_frames_from_file,
+)
+from ak820.state import (  # noqa: F401
+    check_and_record_payload_hash,
+    save_payload_hash,
 )
 from ak820.transport import (  # noqa: F401
     LinuxHidrawTransport,
@@ -106,86 +117,9 @@ class AK820ProDevice:
         raise AttributeError(name)
 
 
-def image_to_rgb565(img):
-    """Convert a 128x128 PIL Image to RGB565 little-endian bytes (32768 bytes)."""
-    img_rgb = img.convert("RGB")
-    pixels = img_rgb.load()
-    data = bytearray(SCREEN_WIDTH * SCREEN_HEIGHT * 2)
-    for y in range(SCREEN_HEIGHT):
-        for x in range(SCREEN_WIDTH):
-            r, g, b = pixels[x, y]
-            rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
-            offset = (y * SCREEN_WIDTH + x) * 2
-            data[offset] = rgb565 & 0xFF
-            data[offset + 1] = (rgb565 >> 8) & 0xFF
-    return bytes(data)
-
-
-def fit_image(img, mode="fill"):
-    """Resize/crop PIL image to 128x128 according to fit mode."""
-    if mode == "stretch":
-        return img.resize((SCREEN_WIDTH, SCREEN_HEIGHT), Image.Resampling.LANCZOS)
-    elif mode == "contain":
-        copy = img.copy()
-        copy.thumbnail((SCREEN_WIDTH, SCREEN_HEIGHT), Image.Resampling.LANCZOS)
-        out = Image.new("RGB", (SCREEN_WIDTH, SCREEN_HEIGHT), (0, 0, 0))
-        ox = (SCREEN_WIDTH - copy.width) // 2
-        oy = (SCREEN_HEIGHT - copy.height) // 2
-        out.paste(copy, (ox, oy))
-        return out
-    else:  # fill / center-crop
-        return ImageOps.fit(img, (SCREEN_WIDTH, SCREEN_HEIGHT), method=Image.Resampling.LANCZOS)
-
-
-def load_frames_from_file(path, fit_mode="fill", max_frames=MAX_FRAMES):
-    """Load static image or multi-frame GIF into RGB565 frames and delays (ms)."""
-    img = Image.open(path)
-    n_frames = getattr(img, "n_frames", 1)
-
-    if n_frames <= 1:
-        fitted = fit_image(img.convert("RGB"), fit_mode)
-        return [image_to_rgb565(fitted)], None
-
-    frames = []
-    delays = []
-    canvas = Image.new("RGBA", img.size, (0, 0, 0, 255))
-
-    try:
-        while len(frames) < max_frames:
-            previous_canvas = canvas.copy()
-            frame_rgba = img.copy().convert("RGBA")
-            canvas.paste(frame_rgba, (0, 0), frame_rgba)
-
-            output = fit_image(canvas.convert("RGB"), fit_mode)
-            frames.append(image_to_rgb565(output))
-
-            delay = img.info.get("duration", 100) or 100
-            delays.append(max(int(delay), 20))
-
-            disposal = getattr(img, "disposal_method", 0)
-            if disposal == 2:
-                canvas = Image.new("RGBA", img.size, (0, 0, 0, 255))
-            elif disposal == 3:
-                canvas = previous_canvas
-
-            img.seek(img.tell() + 1)
-    except EOFError:
-        pass
-
-    return frames, delays
-
-
-def _build_gif_header(num_frames, delays_ms=None):
-    """Build the 256-byte GIF header required by the Sonix firmware."""
-    header = bytearray(256)
-    header[0] = num_frames & 0xFF
-    if delays_ms:
-        for i, delay in enumerate(delays_ms):
-            if 1 + i < 256:
-                header[1 + i] = min(max(16, delay // 5), 255)
-    else:
-        header[1] = 255
-    return bytes(header)
+# image_to_rgb565 / fit_image / load_frames_from_file moved to ak820.screen
+# (v0.8.0); _build_gif_header is the single protocol.py copy (the old local
+# duplicate shadowed the identical protocol import).
 
 
 def upload_frames_to_screen(
@@ -200,8 +134,10 @@ def upload_frames_to_screen(
     # counter), *before* any USB packet (alignment, START, IMAGE_CFG) is produced.
     payload_bytes, num_frames, total_chunks = build_payload(frames, delays_ms)
 
-    import milestone_radar as mr
-    should_upload, digest = mr.check_and_record_payload_hash(payload_bytes, label, force=force)
+    # v0.8.0: dedup is a persistence concern (ak820.state), not a milestone
+    # rendering one — the old `import milestone_radar` here was the §2.1
+    # layering inversion.
+    should_upload, digest = state.check_and_record_payload_hash(payload_bytes, label, force=force)
     if not should_upload:
         print(f"Screen already displays '{label}' (sha256={digest[:10]}...). Skipping USB upload (use --force to override).")
         return False
@@ -229,7 +165,7 @@ def upload_frames_to_screen(
         raise
     print()
 
-    mr.save_payload_hash(digest, label)
+    state.save_payload_hash(digest, label)
     print("Upload and flash save complete!")
     return True
 

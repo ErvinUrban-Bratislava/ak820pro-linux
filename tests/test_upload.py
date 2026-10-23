@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import ak820_ctrl
-import milestone_radar as mr
+from ak820 import state
 
 
 class FakeTransport:
@@ -60,7 +60,7 @@ class TestUploadIncomplete(unittest.TestCase):
 
     def _upload(self, drop_idxs=()):
         dev = FakeTransport(drop_chunk_idxs=drop_idxs)
-        with mock.patch.object(mr, "save_payload_hash") as save:
+        with mock.patch.object(state, "save_payload_hash") as save:
             res = ak820_ctrl.upload_frames_to_screen(
                 dev, self.FRAMES, None, label="test", force=True
             )
@@ -73,7 +73,7 @@ class TestUploadIncomplete(unittest.TestCase):
 
     def test_dropped_ack_raises_upload_incomplete(self):
         dev = FakeTransport(drop_chunk_idxs={0})
-        with mock.patch.object(mr, "save_payload_hash") as save:
+        with mock.patch.object(state, "save_payload_hash") as save:
             with self.assertRaises(ak820_ctrl.UploadIncompleteError) as ctx:
                 ak820_ctrl.upload_frames_to_screen(
                     dev, self.FRAMES, None, label="test", force=True
@@ -84,7 +84,7 @@ class TestUploadIncomplete(unittest.TestCase):
     def test_partial_acks_still_raise(self):
         # 3 frames of 3000B -> header + 9000B -> 3 chunks; drop the middle one.
         dev = FakeTransport(drop_chunk_idxs={1})
-        with mock.patch.object(mr, "save_payload_hash") as save:
+        with mock.patch.object(state, "save_payload_hash") as save:
             with self.assertRaises(ak820_ctrl.UploadIncompleteError) as ctx:
                 ak820_ctrl.upload_frames_to_screen(
                     dev, [b"\x01" * 3000] * 3, None, label="test", force=True
@@ -94,7 +94,7 @@ class TestUploadIncomplete(unittest.TestCase):
 
     def test_no_save_command_sent_on_failure(self):
         dev = FakeTransport(drop_chunk_idxs={0})
-        with mock.patch.object(mr, "save_payload_hash"):
+        with mock.patch.object(state, "save_payload_hash"):
             with self.assertRaises(ak820_ctrl.UploadIncompleteError):
                 ak820_ctrl.upload_frames_to_screen(
                     dev, self.FRAMES, None, label="test", force=True

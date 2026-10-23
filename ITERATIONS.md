@@ -12,6 +12,7 @@
 | `v0.5.0` | 2026-10-23 | Done | Fix D6/D7: `wait_for_keypress()` uses dynamic sysfs VID/PID scan (`find_keyboard_hidraw`, `base=` testable); `compute_upcoming_events()` honors `urgent_days`/`warn_days`/`soon_days` config thresholds; example config aligned | `python3 -m unittest` 61/61 |
 | `v0.6.0` | 2026-10-23 | Done | Autonomous re-audit: REVIEW.md §9 defect resolution audit — all 7 defects (D1–D7) live-verified RESOLVED; REVIEW.md §10 detailed Phase 2 architecture spec (`ak820/` package, `protocol`/`transport`/`device`/`screen`/`state`/`cli`, dependency rules, per-phase DoD, <300-line modules) | `python3 -m unittest` 61/61 + live probes |
 | `v0.7.0` | 2026-10-23 | Done | Architecture Phase 1: `ak820/` package — `protocol.py` (constants/framing/parse helpers), `transport.py` (`HidTransport` seam + `LinuxHidrawTransport` errno→error translation + sysfs discovery), `device.py` (fd-free `AK820Pro` + `stream_payload`, m3 ACK-magic validation, m1 fd-leak fix); `FakeTransport` SN32F290 simulator (ring counter, ACK magic, injectable faults) + 17 offline protocol tests; `ak820_ctrl.py` now a compat shim re-exporting every public name | `python3 -m unittest` 78/78 |
+| `v0.8.0` | 2026-10-23 | Done | Architecture Phase 2: `ak820/screen.py` (byte-identical optimized per-row RGB565 packer ~1.2 ms/frame, `fit_image` m9 alpha-mask fix, GIF loader, shared render_common constants + `lru_cache` fonts m8/§4.2) + `ak820/state.py` (dedup out of `milestone_radar` — §2.1 layering inversion killed — with `AK820_STATE_PATH` override + §4.5 memoryview hashing); `upload_frames_to_screen` no longer imports `milestone_radar`; full shim re-exports preserved | `python3 -m unittest` 108/108 |
 
 ---
 
@@ -61,7 +62,7 @@
   - Add offline protocol unit tests running against `FakeTransport` with no hardware attached.
   - Verify `python3 -m unittest discover -s tests` passes 100%.
 
-- [ ] **`v0.8.0`** — Architecture Modularity Phase 2: Dedicated `screen.py` & RGB565 pipeline:
+- [x] **`v0.8.0`** — Architecture Modularity Phase 2: Dedicated `screen.py` & RGB565 pipeline:
   - Extract image loading, RGB565 conversion, animation framing, and display layout into `ak820/screen.py`.
   - Optimize RGB565 byte packing and clean buffer allocations.
   - Add unit tests for screen buffer generation and format validation.

@@ -13,36 +13,19 @@ import platform
 import shutil
 import subprocess
 import time
-from typing import Dict, Optional, Tuple
-from PIL import Image, ImageDraw, ImageFont
+from typing import Dict, Optional
+from PIL import Image, ImageDraw
 
-SCREEN_W = 128
-SCREEN_H = 128
-
-FONT_BOLD_PATHS = [
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-]
-FONT_MONO_PATHS = [
-    "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono-Bold.ttf",
-]
-FONT_REGULAR_PATHS = [
-    "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
-    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-]
-
-
-def _load_font(paths: list[str], size: int) -> ImageFont.FreeTypeFont:
-    for p in paths:
-        if os.path.exists(p):
-            try:
-                return ImageFont.truetype(p, size)
-            except OSError:
-                continue
-    return ImageFont.load_default()
+# v0.8.0 render_common (m8): screen constants, font path catalogs, and the
+# lru_cache'd font loader (§4.2) are shared with milestone_radar.py.
+from ak820.screen import (
+    FONT_BOLD_PATHS,
+    FONT_MONO_PATHS,
+    FONT_REGULAR_PATHS,
+    SCREEN_H,
+    SCREEN_W,
+    _load_font,
+)
 
 
 def get_system_stats() -> Dict:
