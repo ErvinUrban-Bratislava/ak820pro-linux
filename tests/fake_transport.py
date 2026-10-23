@@ -12,9 +12,11 @@ Models the three firmware behaviors FINDINGS.md documents:
       `disconnect_at=N` (the device is "unplugged" after N ring-wrap chunks:
       every subsequent call raises DeviceDisconnectedError — ENODEV model), and
       `ctrl_dead=True` (the control pipe is dead: every get_feature raises
-      OSError(ENODEV) — the §3.6 dead-handshake model), and
+      OSError(ENODEV) — the §3.6 dead-handshake model),
       `flood=True` (the data pipe is chattering: every read_data answers an
-      ACK — the v0.17.0 bounded-drain model, §16).
+      ACK — the v0.17.0 bounded-drain model, §16), and
+      `perm_denied=True` (the control pipe rejects every operation with
+      PermissionDeniedError — the v0.20.0 missing-udev-rule model, §19).
 
 v0.13.0 (§3.5): the ring starts DIRTY (`start_idx=37`, nonzero) by default, so
 tests prove the alignment-skip is state-driven (state file says clean), never
@@ -23,7 +25,7 @@ unconditional. Pass `start_idx=0` for a provably-clean-power-on model.
 
 import errno
 
-from ak820.errors import DeviceDisconnectedError
+from ak820.errors import DeviceDisconnectedError, PermissionDeniedError
 
 ACK = b"\x01\x5A\x02" + b"\x00" * 61
 DIRTY_START_IDX = 37  # arbitrary nonzero [0x2000003A] — a pipe that needs aligning
@@ -33,7 +35,7 @@ class FakeTransport:
     """Emulates SN32F290: 64-packet sub-counter, per-chunk ACK, injectable faults."""
 
     def __init__(self, drop_ack_at=None, ack_magic=True, drop_once=False, disconnect_at=None,
-                 ctrl_dead=False, start_idx=DIRTY_START_IDX, flood=False):
+                 ctrl_dead=False, start_idx=DIRTY_START_IDX, flood=False, perm_denied=False):
         self.sub_packet_idx = start_idx % 64  # firmware [0x2000003A]
         self.chunks_expected = 0
         self.chunks_seen = 0
@@ -48,6 +50,7 @@ class FakeTransport:
         self.dead = False
         self.ctrl_dead = ctrl_dead         # control pipe dead (§3.6 model)
         self.flood = flood                 # chattering pipe: read_data always answers (§16)
+        self.perm_denied = perm_denied     # control pipe rejects: no udev rule (§19)
 
     def _check_alive(self):
         if self.dead:
@@ -55,9 +58,16 @@ class FakeTransport:
                 "FakeTransport: simulated mid-upload unplug (ENODEV)."
             )
 
+    def _check_perm(self):
+        if self.perm_denied:
+            raise PermissionDeniedError(
+                "FakeTransport: simulated permission denial (missing udev rule)."
+            )
+
     # --- control pipe ---------------------------------------------------------
     def set_feature(self, report64: bytes) -> None:
         self._check_alive()
+        self._check_perm()
         report64 = bytes(report64)
         self.feature_log.append(report64)
         if report64[0] == 0x04 and report64[1] == 0x72:  # IMAGE_CFG
@@ -66,6 +76,7 @@ class FakeTransport:
 
     def get_feature(self) -> bytes:
         self._check_alive()
+        self._check_perm()
         if self.ctrl_dead:
             raise OSError(errno.ENODEV, "simulated dead control pipe")
         return b"\x00" * 64                              # canned handshake

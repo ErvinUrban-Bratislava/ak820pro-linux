@@ -69,8 +69,13 @@ class LinuxHidrawTransport:
                 f"{what}: permission denied on the device node "
                 "(install the udev rule from udev/ or run with access to /dev)."
             )
-        if exc.errno == errno.ENODEV:
-            return DeviceDisconnectedError(f"{what}: device disappeared (ENODEV).")
+        if exc.errno in (errno.ENODEV, errno.ENOENT, errno.ENXIO):
+            # v0.20.0 (§19): ENOENT/ENXIO join ENODEV — a node that vanished
+            # between sysfs discovery and open (or whose driver detached) is
+            # the same transient mid-op disconnect, exit 75, not a traceback.
+            return DeviceDisconnectedError(
+                f"{what}: device disappeared ({exc.strerror or exc.errno})."
+            )
         return exc
 
     # --- control pipe (Interface 3, Usage Page 0xFF13) ----------------------
@@ -206,12 +211,15 @@ class AK820ProDevice:
                 ctrl_fd = os.open(self.ctrl_path, os.O_RDWR)
             if self.tft_path:
                 data_fd = os.open(self.tft_path, os.O_RDWR)
-        except OSError:
+        except OSError as exc:
             # m1: never leak the fd that did open when the second one fails
             for fd in (ctrl_fd, data_fd):
                 if fd is not None:
                     os.close(fd)
-            raise
+            # D15 (v0.20.0, §19): an unplug between discovery and open (ENOENT/
+            # ENXIO/ENODEV) or a missing udev rule (EACCES/EPERM) used to leak a
+            # raw OSError traceback (exit 1) — translate to the taxonomy: 75 / 4.
+            raise LinuxHidrawTransport._translate(exc, "hidraw open") from exc
         self.pro = AK820Pro(LinuxHidrawTransport(ctrl_fd, data_fd))
         return self
 

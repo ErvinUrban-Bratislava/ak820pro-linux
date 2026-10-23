@@ -24,6 +24,7 @@
 | `v0.17.0` | 2026-10-24 | Done | Timeout Guards & Bounded I/O (REVIEW.md §16): `drain_data_acks` capped at `DRAIN_MAX_READS` (a chattering pipe can no longer hang the CLI), `stream_payload` whole-transfer deadline (30 s base + 2× per-chunk budget, injectable clock) raising `UploadIncompleteError` exit 5 before SAVE, `LinuxHidrawTransport.write_data` write-all loop with stall cap (short writes completed; wedged pipe -> `ProtocolError` exit 7), FakeTransport `flood` fault | `python3 -m unittest` 243/243 + live `probe`/`--dry-run` via shim |
 | `v0.18.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §17): D12 `upload <non-image/dir/corrupt>` raw PIL traceback → new `InvalidFileError` exit **9** via shared `actions.load_frames_guarded` (live + `--dry-run` fail identically) + D13 `events remove <no-match>` silent success → `ConfigError` exit 6 with config left byte-identical + D14 `--save-preview` path errors (missing parents auto-created; unusable targets exit 9) + m13 version drift (`__version__` 0.9.0 vs pyproject 1.0.0) locked equal by test; README/`DOCUMENTED_CODES`/package/shim synced in one invariant-locked commit | `python3 -m unittest` 263/263 + live exit probes 8/9 via shim |
 | `v0.19.0` | 2026-10-24 | Done | Modular Package Refactoring (REVIEW.md §18): sysfs discovery (`find_hidraw_devices`/`find_keyboard_hidraw` + helpers) extracted byte-identically from `transport.py` (299 → 229 lines) into new `ak820/discovery.py` (99 lines) — *which* nodes vs *how* to talk over them; identity re-exports keep `transport`/`ak820`/`ak820_ctrl`/`cli` and all mock-patch targets intact; §10.2 refined (fd/io grep stays transport-only; sysfs path strings allowed in `discovery.py`); `discovery → {protocol}` keeps the graph acyclic | `python3 -m unittest` 278/278 + live `probe`/`--dry-run` via shim |
+| `v0.20.0` | 2026-10-24 | Done | Disconnect Recovery & Open-Path Robustness (REVIEW.md §19): D15 `AK820ProDevice.__enter__` leaked raw OSError tracebacks (exit 1) when a node vanished between discovery and open (ENOENT/ENXIO) or the udev rule was missing (EACCES/EPERM) — `_translate` now maps ENOENT/ENXIO with ENODEV → `DeviceDisconnectedError` 75 and open failures → 75/4, m1 close-once now test-locked; D16 `handshake()` swallowed `PermissionDeniedError` as a §3.6 blip and misattributed strike two as a dead pipe (75) — permission errors now fail fast (4); mid-stream/mid-align disconnect (75) never retried like exit-5, never reaches SAVE, digest unrecorded, pipe flag dirty; `FakeTransport(perm_denied=True)` fault | `python3 -m unittest` 300/300 + live `probe`/`--dry-run` via shim |
 
 ---
 
@@ -185,4 +186,22 @@
   - §10.2 refined, not relaxed: fd/io tokens remain transport-only (grep-locked);
     sysfs path strings allowed in `transport.py` or `discovery.py`.
   - New `tests/test_discovery_v019.py` (13 offline tests, zero hardware).
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [x] **`v0.20.0`** — Disconnect Recovery & Open-Path Robustness (REVIEW.md §19):
+  - D15: `AK820ProDevice.__enter__` leaked raw OSError tracebacks (exit 1) —
+    unplug between sysfs discovery and `os.open` (ENOENT/ENXIO) or a missing
+    udev rule (EACCES/EPERM) at open time. `_translate` now maps ENOENT/ENXIO
+    alongside ENODEV → `DeviceDisconnectedError` (75); `__enter__` routes every
+    open failure through it (→ 75/4). m1 fd-leak guarantee preserved and now
+    test-locked (second-open failure closes the first fd exactly once).
+  - D16: `handshake()` swallowed `PermissionDeniedError` as a transient §3.6
+    blip; strike two misattributed a rejected pipe as a dead one (75 instead of
+    the udev-rule fix, 4). Permission errors now propagate immediately; the
+    OSError/ENODEV two-strike model is unchanged.
+  - Disconnect semantics locked: mid-stream/mid-align unplug (75) is never
+    retried like exit-5, never reaches SAVE, digest stays unrecorded, pipe flag
+    stays dirty; CLI end-to-end exits 75/4, never a traceback.
+  - `FakeTransport` gains a `perm_denied=True` fault (missing-udev-rule model).
+  - New `tests/test_disconnect_recovery_v020.py` (22 offline tests, zero hardware).
   - Verify `python3 -m unittest discover -s tests` passes 100%.

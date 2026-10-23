@@ -1260,3 +1260,54 @@ mock-patch surface (`transport.find_keyboard_hidraw` still steers
 identity/usage-page helper behavior, <300-line budget, fresh-interpreter
 no-cycle import. Suite: 263 → 278 tests, all green; live `probe` +
 `--dry-run radar` through the `ak820_ctrl` shim on real hardware.
+
+---
+
+## 19. Disconnect Recovery & Open-Path Robustness (v0.20.0, 2026-10-24)
+
+Reliability audit of the two seams where a physical unplug or a missing udev
+rule could still escape the §3.4 exit-code contract as a raw traceback:
+
+### 19.1 New defects found & closed in v0.20.0
+
+- **D15 — `AK820ProDevice.__enter__` leaked raw OSError on open.** Sysfs
+  discovery and `os.open` are not atomic: unplug in between raises
+  `FileNotFoundError` (ENOENT) or `OSError(ENXIO)` (driver detached), and a
+  missing udev rule raises `PermissionError` at *open* time — all exited 1
+  with a traceback while the taxonomy already had codes for exactly these
+  states. `_translate` now maps ENOENT/ENXIO alongside ENODEV to
+  `DeviceDisconnectedError` (75, re-seat and re-run), and `__enter__` routes
+  every open failure through it (EACCES/EPERM → `PermissionDeniedError`, 4).
+  The m1 fd-leak guarantee is preserved and now *locked by test*: when the
+  second open fails, the first fd is closed exactly once.
+- **D16 — `handshake()` swallowed `PermissionDeniedError` as a transient
+  blip.** The §3.6 two-strike counter treats failures as flaky-cable noise,
+  but a rejected control pipe (udev rule missing) never recovers: strike two
+  misattributed it as a dead pipe (75, "re-seat") instead of pointing at the
+  real fix (4, "install the udev rule"). Permission errors now propagate
+  immediately without touching the counter; the OSError/ENODEV two-strike
+  model is unchanged.
+
+### 19.2 Disconnect semantics (locked by tests)
+
+- Mid-stream unplug (`FakeTransport(disconnect_at=N)`): `DeviceDisconnectedError`
+  (75) propagates — it is **not** retried like exit-5 `UploadIncompleteError`
+  (retrying an unplug wastes the run; systemd `Restart=on-failure` re-runs
+  after re-seating). No SAVE packet reaches a dead device, the digest stays
+  unrecorded (next run retries, never skips), and the §3.5 pipe flag stays
+  dirty (next run re-aligns).
+- Disconnect during alignment propagates as 75 through the same contract.
+- CLI end-to-end: vanished node → exit 75, permission denied → exit 4,
+  never a traceback.
+
+### 19.3 Verification
+
+`tests/test_disconnect_recovery_v020.py` (22 offline tests, zero hardware):
+errno-translation table (incl. EIO pass-through regression), open-path typed
+exits + m1 close-once proof, handshake fast-fail vs two-strike parity,
+mid-stream/mid-align disconnect through the real upload pipeline with state
+isolation (no digest recorded, pipe dirty), no-retry-on-75 proof via a
+counting `stream_payload` patch, and CLI-level exit probes. `FakeTransport`
+gains a `perm_denied=True` fault (missing-udev-rule model). Suite: 278 → 300
+tests, all green; live `probe` + `--dry-run radar` through the `ak820_ctrl`
+shim on real hardware.

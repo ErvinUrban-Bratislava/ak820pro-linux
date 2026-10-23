@@ -12,6 +12,7 @@ import time
 from .errors import (
     AK820Error,
     DeviceDisconnectedError,
+    PermissionDeniedError,
     ProtocolError,
     UploadIncompleteError,
 )
@@ -63,6 +64,9 @@ class AK820Pro:
         time.sleep(CMD_DELAY)
         try:
             resp = self.get_feature()
+        except PermissionDeniedError:
+            # D16 (§19): a rejected pipe is not a blip — fail fast (exit 4).
+            raise
         except (OSError, AK820Error):
             resp = None
         if resp is None:
