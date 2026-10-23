@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Native Linux CLI tool to control the 128x128 TFT screen, animated GIFs, RGB backlighting, and RTC clock on Ajazz AK820 Pro"
 readme = "README.md"
 requires-python = ">=3.10"
-license = { text = "MIT" }
+license = "MIT"
 authors = [
     { name = "Ervin Urban" }
 ]
@@ -46,8 +46,8 @@ Repository = "https://github.com/ErvinUrban-Bratislava/ak820pro-linux.git"
 Issues = "https://github.com/ErvinUrban-Bratislava/ak820pro-linux/issues"
 
 [project.scripts]
-ak820 = "ak820_ctrl:main"
-ak820-ctrl = "ak820_ctrl:main"
+ak820 = "ak820.cli:main"
+ak820-ctrl = "ak820.cli:main"
 
 [tool.setuptools]
 py-modules = ["ak820_ctrl", "milestone_radar", "widgets"]

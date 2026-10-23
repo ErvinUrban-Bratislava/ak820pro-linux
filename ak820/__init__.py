@@ -1,12 +1,15 @@
-"""ak820 — modular Ajazz AK820 Pro Linux driver package (Phase 2).
+"""ak820 — modular Ajazz AK820 Pro Linux driver package (Phase 3 complete).
 
 v0.7.0 shipped the testability seam: `protocol` (pure framing), `transport`
 (the only fd/ioctl/sysfs module), `device` (fd-free state machine) and
 `errors` (exit-code taxonomy). v0.8.0 adds `screen` (RGB565 pipeline +
-render_common) and `state` (payload dedup persistence). `cli` lands in v0.9.0.
+render_common) and `state` (payload dedup persistence). v0.9.0 completes the
+split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
+`config` (device-free events/preview handlers), and `cli` (argparse tree +
+HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.8.0"
+__version__ = "0.9.0"
 
 from .device import AK820Pro, stream_payload
 from .errors import (
@@ -65,10 +68,50 @@ from .transport import (
     find_keyboard_hidraw,
 )
 
+# --- v0.9.0: command layer (imports last: cli pulls in the whole stack) -------
+from .errors import DeviceNotFoundError
+from .transport import AK820ProDevice, wait_for_keypress
+from .actions import (
+    build_radar_frames,
+    sync_clock,
+    upload_frames_to_screen,
+    upload_to_screen,
+)
+from .backlight import (
+    SHOWCASE_PRESETS,
+    apply_idle_backlight,
+    dispatch_backlight,
+    get_idle_backlight_cfg,
+    list_backlight_presets,
+    save_idle_backlight_cfg,
+    set_backlight,
+)
+from .status import run_backlight_demo, set_status_backlight
+from .cli import build_parser, main, run_watch_loop
+
 __all__ = [
     "__version__",
     "AK820Error",
     "AK820Pro",
+    "AK820ProDevice",
+    "DeviceNotFoundError",
+    "SHOWCASE_PRESETS",
+    "apply_idle_backlight",
+    "build_parser",
+    "build_radar_frames",
+    "dispatch_backlight",
+    "get_idle_backlight_cfg",
+    "list_backlight_presets",
+    "main",
+    "run_backlight_demo",
+    "run_watch_loop",
+    "save_idle_backlight_cfg",
+    "set_backlight",
+    "set_status_backlight",
+    "sync_clock",
+    "upload_frames_to_screen",
+    "upload_to_screen",
+    "wait_for_keypress",
     "ACK_MAGIC",
     "CHUNK_ACK_TIMEOUT_MS",
     "CHUNK_SIZE",

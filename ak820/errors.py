@@ -24,6 +24,17 @@ class DeviceDisconnectedError(AK820Error):
     exit_code = 3
 
 
+class DeviceNotFoundError(AK820Error):
+    """No AK820 Pro HID interfaces were discovered (§3.4: give up, code 3).
+
+    Raised by the CLI dispatch when sysfs discovery finds no control pipe
+    (or no data pipe for screen commands) — a friendly message replaces
+    the raw `sys.exit(str)` traceback-style exit of the pre-0.9.0 CLI.
+    """
+
+    exit_code = 3
+
+
 class PermissionDeniedError(AK820Error):
     """The device node rejected the operation (errno EPERM/EACCES — the udev
     rule from ``udev/`` is probably not installed)."""

@@ -10,6 +10,7 @@ import errno
 import fcntl
 import os
 import select
+import sys
 from typing import Optional, Protocol, runtime_checkable
 
 from . import protocol
@@ -180,3 +181,86 @@ def find_keyboard_hidraw(base="/sys/class/hidraw"):
         if dev_vid == protocol.VID and dev_pid in protocol.PIDS:
             paths.append(f"/dev/{entry}")
     return paths
+
+
+def wait_for_keypress(timeout=None):
+    """Wait for user input on the AK820 Pro keyboard (keypress or knob event).
+
+    Lives here because it is the only keypress path that touches fds/select
+    (§10.2: fd/io code stays inside transport.py). D6: dynamic sysfs scan.
+    """
+    dev_paths = find_keyboard_hidraw()
+    fds = []
+    for p in dev_paths:
+        if os.path.exists(p):
+            try:
+                fds.append(os.open(p, os.O_RDONLY | os.O_NONBLOCK))
+            except OSError:
+                pass
+    if not fds:
+        # Fallback to stdin wait if no AK820 Pro hidraw node is accessible
+        r, _, _ = select.select([sys.stdin], [], [], timeout)
+        return bool(r)
+    try:
+        # Drain stale unread inputs
+        for fd in fds:
+            while select.select([fd], [], [], 0)[0]:
+                try:
+                    os.read(fd, 64)
+                except OSError:
+                    break
+        # Wait for next input
+        r, _, _ = select.select(fds, [], [], timeout)
+        if r:
+            for fd in r:
+                try:
+                    os.read(fd, 64)
+                except OSError:
+                    pass
+            return True
+        return False
+    finally:
+        for fd in fds:
+            os.close(fd)
+
+
+class AK820ProDevice:
+    """Thin factory: opens the hidraw nodes and delegates every protocol call
+    to an `AK820Pro` state machine over a `LinuxHidrawTransport` (v0.7.0 seam).
+    Constructor signature and context-manager usage are unchanged for callers."""
+
+    def __init__(self, tft_path, ctrl_path):
+        self.tft_path = tft_path
+        self.ctrl_path = ctrl_path
+        self.pro = None
+
+    def __enter__(self):
+        from .device import AK820Pro  # local import: device imports this module
+
+        ctrl_fd = data_fd = None
+        try:
+            if self.ctrl_path:
+                ctrl_fd = os.open(self.ctrl_path, os.O_RDWR)
+            if self.tft_path:
+                data_fd = os.open(self.tft_path, os.O_RDWR)
+        except OSError:
+            # m1: never leak the fd that did open when the second one fails
+            for fd in (ctrl_fd, data_fd):
+                if fd is not None:
+                    os.close(fd)
+            raise
+        self.pro = AK820Pro(LinuxHidrawTransport(ctrl_fd, data_fd))
+        return self
+
+    def __exit__(self, *args):
+        if self.pro is not None:
+            self.pro.close()
+            self.pro = None
+
+    def __getattr__(self, name):
+        """Delegate protocol calls (send_feature, handshake, send_data_chunk,
+        align_data_pipe, sync_clock, ...) to the underlying AK820Pro."""
+        pro = self.__dict__.get("pro")
+        if pro is not None:
+            return getattr(pro, name)
+        raise AttributeError(name)

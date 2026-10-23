@@ -23,6 +23,7 @@ from unittest import mock
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import ak820_ctrl
+from ak820 import transport  # v0.9.0: wait_for_keypress lives in transport.py
 
 
 def _mk_hidraw(base, name, vid, pid, usage=None):
@@ -78,7 +79,7 @@ class WaitForKeypressDynamicScanTests(unittest.TestCase):
     """D6: wait_for_keypress must open the sysfs-discovered nodes, not hidraw0/1."""
 
     def test_opens_discovered_paths_not_hardcoded(self):
-        with mock.patch.object(ak820_ctrl, "find_keyboard_hidraw",
+        with mock.patch.object(transport, "find_keyboard_hidraw",
                                return_value=["/dev/hidraw7"]) as m_find, \
              mock.patch.object(ak820_ctrl.os, "open", return_value=42) as m_open, \
              mock.patch.object(ak820_ctrl.os, "read", return_value=b"\x01" * 64), \
@@ -94,7 +95,7 @@ class WaitForKeypressDynamicScanTests(unittest.TestCase):
         self.assertNotIn("/dev/hidraw1", opened)
 
     def test_stdin_fallback_when_no_device_found(self):
-        with mock.patch.object(ak820_ctrl, "find_keyboard_hidraw", return_value=[]), \
+        with mock.patch.object(transport, "find_keyboard_hidraw", return_value=[]), \
              mock.patch.object(ak820_ctrl.select, "select",
                                side_effect=[([], [], [])]) as m_sel:
             result = ak820_ctrl.wait_for_keypress(timeout=0)

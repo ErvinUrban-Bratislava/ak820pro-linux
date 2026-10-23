@@ -109,10 +109,13 @@ class TestUploadIncomplete(unittest.TestCase):
         self.assertEqual(ak820_ctrl.UploadIncompleteError.exit_code, 5)
 
     def test_main_maps_error_to_exit_code_5(self):
+        # v0.9.0: main() lives in ak820.cli (ak820_ctrl.main is the same object).
+        from ak820 import cli
+
         boom = ak820_ctrl.UploadIncompleteError("boom")
-        with mock.patch.object(ak820_ctrl, "_main_impl", side_effect=boom):
+        with mock.patch.object(cli, "_dispatch", side_effect=boom):
             with self.assertRaises(SystemExit) as ctx:
-                ak820_ctrl.main()
+                ak820_ctrl.main(["probe"])
         self.assertEqual(ctx.exception.code, 5)
 
 

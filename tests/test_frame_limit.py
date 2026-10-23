@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import ak820_ctrl
 import milestone_radar as mr
-from ak820 import state
+from ak820 import actions, state  # v0.9.0: build_radar_frames lives in actions.py
 from test_upload import FakeTransport
 
 
@@ -78,7 +78,7 @@ class TestFrameLimit(unittest.TestCase):
         # + 2 slides x 60 frames = 360) and assert it is clamped, not wrapped.
         big_gif = ([b"\x00" * 100] * 60, [125] * 60)
         with mock.patch.object(
-            ak820_ctrl, "load_frames_from_file", return_value=big_gif
+            actions, "load_frames_from_file", return_value=big_gif
         ):
             frames, delays = ak820_ctrl.build_radar_frames(
                 "hybrid", upcoming, today, slide_seconds=60.0
