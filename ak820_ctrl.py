@@ -35,6 +35,9 @@ USAGE_PAGE_DATA = 0xFF68     # Interface 2: 4096-byte bulk image chunks + 64B AC
 SCREEN_WIDTH = 128
 SCREEN_HEIGHT = 128
 CHUNK_SIZE = 4096
+# Sonix firmware GIF header stores the frame count in a single byte, so more
+# than 255 frames silently wrap (& 0xFF) and the device animates garbage.
+MAX_FRAMES = 255
 CMD_DELAY = 0.050
 IMG_CFG_SETUP_DELAY = 0.350
 CHUNK_ACK_TIMEOUT_MS = 1000
@@ -286,7 +289,7 @@ def fit_image(img, mode="fill"):
         return ImageOps.fit(img, (SCREEN_WIDTH, SCREEN_HEIGHT), method=Image.Resampling.LANCZOS)
 
 
-def load_frames_from_file(path, fit_mode="fill", max_frames=255):
+def load_frames_from_file(path, fit_mode="fill", max_frames=MAX_FRAMES):
     """Load static image or multi-frame GIF into RGB565 frames and delays (ms)."""
     img = Image.open(path)
     n_frames = getattr(img, "n_frames", 1)
@@ -345,6 +348,15 @@ def upload_frames_to_screen(
     force: bool = True,
 ):
     """Execute START -> IMAGE_CFG -> DATA+ACK -> SAVE for a list of RGB565 frames."""
+    # Defect D3: the GIF header encodes the frame count in one byte, so >255
+    # frames silently wrap (& 0xFF). Reject the upload outright *before* any
+    # USB packet (alignment, START, IMAGE_CFG) reaches the device.
+    if len(frames) > MAX_FRAMES:
+        raise ValueError(
+            f"Cannot upload {len(frames)} frames: the firmware GIF header stores "
+            f"the frame count in a single byte (max {MAX_FRAMES}). "
+            "Shorten the animation or reduce its loop count."
+        )
     num_frames = len(frames)
     header = _build_gif_header(num_frames, delays_ms)
 
@@ -835,6 +847,11 @@ def build_radar_frames(view: str, upcoming: list, today: datetime.date, slide_se
                 delays.extend(b_delays or [125] * len(b_frames))
         frames.extend([hero_rgb] * frames_per_slide + [board_rgb] * frames_per_slide)
         delays.extend([1275] * (frames_per_slide * 2))
+        # Defect D3: clamp the hybrid total (Bongo loops + event slides) so the
+        # frame count can never silently wrap & 0xFF in the GIF header.
+        if len(frames) > MAX_FRAMES:
+            frames = frames[:MAX_FRAMES]
+            delays = delays[:MAX_FRAMES]
         return frames, delays
     else:  # "cycle": Hero slide (~5s) + Board slide (~5s)
         frames = [hero_rgb] * frames_per_slide + [board_rgb] * frames_per_slide

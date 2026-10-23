@@ -7,6 +7,7 @@
 | `v0.0.0` | 2026-10-23 | Baseline | Initial open-source release + architectural review (`REVIEW.md`) | `python3 -m unittest` 8/8 |
 | `v0.1.0` | 2026-10-23 | Done | Fix D1: `parse_mode()` replaces eager `int(args.mode)` crash in `backlight set --mode` (case-insensitive names, 0..19 bounds, friendly errors) | `python3 -m unittest` 14/14 |
 | `v0.2.0` | 2026-10-23 | Done | Fix D2: `UploadIncompleteError` (exit 5) — dropped chunk ACKs now abort before SAVE, digest recorded only on full transfer | `python3 -m unittest` 20/20 |
+| `v0.3.0` | 2026-10-23 | Done | Fix D3: `MAX_FRAMES = 255` guard — `upload_frames_to_screen` rejects >255 frames before any USB packet; hybrid radar frame total clamped (no silent & 0xFF wrap) | `python3 -m unittest` 25/25 |
 
 ---
 
@@ -25,7 +26,7 @@
   - Add unit test verifying `UploadIncompleteError` is raised when chunk ACKs drop.
   - Verify `python3 -m unittest discover -s tests` passes 100%.
 
-- [ ] **`v0.3.0`** — Fix Defect D3: 255-frame firmware limit guard:
+- [x] **`v0.3.0`** — Fix Defect D3: 255-frame firmware limit guard:
   - Define `MAX_FRAMES = 255` constant in `ak820_ctrl.py`.
   - In `upload_frames_to_screen`: enforce `len(frames) <= MAX_FRAMES` before sending any USB packets.
   - In `build_radar_frames`: clamp total generated frames (bongo loops + event slides) so hybrid mode cannot silently wrap & 0xFF.
