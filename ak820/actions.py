@@ -5,6 +5,7 @@ Depends only on {protocol, device, screen, state, errors} + milestone_radar
 (rendering domain, function-level import — never on protocol/device paths).
 """
 
+import hashlib
 import os
 import sys
 
@@ -106,6 +107,22 @@ def upload_to_screen(dev, file_path: str, fit_mode: str = "fill", force: bool = 
         raise FileNotFoundError(f"File not found: {file_path}")
     frames, delays = load_frames_from_file(file_path, fit_mode=fit_mode)
     return upload_frames_to_screen(dev, frames, delays, label=os.path.basename(file_path), force=force)
+
+
+def _payload_digest(frames: list, delays_ms: list = None) -> str:
+    """sha256 of the exact wire payload — identical to what dedup records."""
+    payload_bytes, _, _ = build_payload(frames, delays_ms)
+    return hashlib.sha256(memoryview(payload_bytes)).hexdigest()
+
+
+def describe_payload(frames: list, delays_ms: list = None, label: str = "screen") -> int:
+    """`--dry-run` (B7): build the exact wire payload, report digest + chunk
+    count, and touch neither the dedup state file nor USB. The digest is the
+    same sha256 a real upload would record, so previews are byte-trustworthy."""
+    payload_bytes, num_frames, total_chunks = build_payload(frames, delays_ms)
+    digest = hashlib.sha256(memoryview(payload_bytes)).hexdigest()
+    print(f"[dry-run] '{label}': {num_frames} frame(s), {total_chunks} chunk(s), sha256={digest}")
+    return 0
 
 
 def sync_clock(dev, now=None):

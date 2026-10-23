@@ -206,6 +206,34 @@ The Ajazz AK820 Pro firmware explicitly restricts vendor-specific HID endpoints 
 
 ---
 
+## Ops & Observability
+
+Global flags go **before** the subcommand:
+
+```bash
+# Verbose diagnostics on stderr; stdout stays machine-readable (JSON parses
+# cleanly with stderr discarded):
+ak820 --verbose events list --json
+
+# Preview any rendered payload without touching USB (digest + chunk count,
+# identical sha256 to what a real upload records — safe in CI / headless):
+ak820 --dry-run radar --view hero
+ak820 --dry-run upload image.png
+```
+
+### systemd Units (`systemd/`)
+
+| Unit | Type | Purpose |
+|:---|:---|:---|
+| `ak820-radar.service` + `.timer` | oneshot + timer | Refresh the milestone radar every 30 min (dedup makes no-change runs free) |
+| `ak820-hud.service` | simple, `Restart=on-failure` | Continuous `hud --watch 15`; a mid-op unplug exits **75** (EX_TEMPFAIL) and systemd re-spawns after re-seating |
+
+```bash
+# User units (keyboard access needs the udev GROUP, see Setup above):
+mkdir -p ~/.config/systemd/user && cp systemd/ak820-* ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now ak820-radar.timer ak820-hud.service
+```
+
 ## Exit Codes
 
 Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers can branch on the exit code without parsing stderr:

@@ -10,26 +10,35 @@ error, 3 device not found, 4 permission denied, 5 upload incomplete,
 """
 
 import argparse
+import logging
 import subprocess
 import sys
 import time
 
-from .actions import build_radar_frames, sync_clock, upload_frames_to_screen, upload_to_screen
+from .actions import describe_payload, sync_clock, upload_frames_to_screen, upload_to_screen
 from .backlight import dispatch_backlight
-from .config import (
-    cmd_events,
-    cmd_hud_preview,
-    cmd_media_preview,
-    cmd_radar_preview,
-    today_from_args,
-)
+from .config import cmd_events, cmd_hud_preview, cmd_media_preview, cmd_radar_preview
 from .errors import AK820Error, DeviceNotFoundError
-from .screen import image_to_rgb565
+from .renderers import DRY_RENDERERS, render_card, render_hud, render_media, render_radar
 from .status import set_status_backlight
 from .transport import AK820ProDevice, find_hidraw_devices
 
+log = logging.getLogger("ak820")
+
 # Commands that render/upload the TFT data pipe (0xFF68) in addition to control.
 TFT_COMMANDS = ("upload", "radar", "card", "hud", "stats", "media")
+
+
+def _configure_logging(verbose: bool) -> None:
+    """B6: all diagnostics land on stderr; stdout stays reserved for
+    machine-readable data (`events list --json` must parse with stderr
+    discarded). `--verbose/-v` raises the level from INFO to DEBUG."""
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        stream=sys.stderr,
+        format="%(levelname).1s %(name)s: %(message)s",
+        force=True,
+    )
 
 
 def build_parser():
@@ -37,6 +46,11 @@ def build_parser():
     from .backlight import SHOWCASE_PRESETS
 
     parser = argparse.ArgumentParser(description="Ajazz AK820 Pro Linux Screen, Clock & Milestone Radar Controller")
+    # Global flags (B6/B7) precede the subcommand: `ak820 --dry-run radar ...`
+    parser.add_argument("--verbose", "-v", action="store_true",
+                        help="Verbose diagnostic logging on stderr (stdout stays machine-readable)")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="Render + report payload digest & chunk count only; send nothing over USB")
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("upload", help="Upload image or animated GIF to TFT display")
@@ -143,34 +157,21 @@ def cmd_sync(args, dev):
 
 
 def cmd_radar(args, dev):
-    import milestone_radar as mr
-
     if args.sync_clock:
         sync_clock(dev)
-    today = today_from_args(args)
-    cfg = mr.load_events_config(getattr(args, "config", None))
-    upcoming = mr.compute_upcoming_events(cfg, today=today)
-    frames, delays = build_radar_frames(args.view, upcoming, today, slide_seconds=args.seconds)
-    label = f"radar:{args.view}:{args.seconds}s:{today.isoformat()}"
+    frames, delays, label = render_radar(args)
     upload_frames_to_screen(dev, frames, delays, label=label, force=args.force)
 
 
 def cmd_card(args, dev):
-    import milestone_radar as mr
-
-    img = mr.render_custom_card(args.title, args.value, args.sub, args.footer, args.theme)
-    label = f"card:{args.title}:{args.value}:{args.sub}:{args.footer}:{args.theme}"
-    upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
+    frames, delays, label = render_card(args)
+    upload_frames_to_screen(dev, frames, delays, label=label, force=args.force)
 
 
 def cmd_hud(args, dev):
-    import widgets
-
     def push():
-        stats = widgets.get_system_stats()
-        img = widgets.render_hud_card(stats)
-        label = f"hud:{stats['cpu_pct']}:{stats['ram_pct']}:{stats['temp_c']}:{stats['time']}"
-        upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
+        frames, delays, label = render_hud(args)
+        upload_frames_to_screen(dev, frames, delays, label=label, force=args.force)
 
     push()
     if getattr(args, "watch", 0) > 0:
@@ -178,13 +179,9 @@ def cmd_hud(args, dev):
 
 
 def cmd_media(args, dev):
-    import widgets
-
     def push():
-        media = widgets.get_media_status()
-        img = widgets.render_media_card(media)
-        label = f"media:{media['status']}:{media['title']}:{media['artist']}"
-        upload_frames_to_screen(dev, [image_to_rgb565(img)], None, label=label, force=args.force)
+        frames, delays, label = render_media(args)
+        upload_frames_to_screen(dev, frames, delays, label=label, force=args.force)
 
     push()
     if getattr(args, "watch", 0) > 0:
@@ -239,7 +236,19 @@ def _dispatch(args):
     if args.command == "media" and getattr(args, "save_preview", None):
         return cmd_media_preview(args)
 
+    # B7: --dry-run renders the exact payload and reports digest + chunk count
+    # without ever opening a hidraw node — zero USB traffic, works headless.
+    if args.dry_run:
+        renderer = DRY_RENDERERS.get(args.command)
+        if renderer is None:
+            print(f"[dry-run] '{args.command}' sends no rendered payload — nothing to preview, nothing sent.")
+            return 0
+        log.debug("dry-run: rendering '%s' with no USB traffic", args.command)
+        frames, delays, label = renderer(args)
+        return describe_payload(frames, delays, label)
+
     tft, ctrl = find_hidraw_devices()
+    log.debug("hidraw discovery: tft=%s ctrl=%s", tft, ctrl)
     if args.command == "probe":
         print(f"TFT Data Interface (0xFF68):    {tft or 'NOT FOUND'}")
         print(f"Control/RTC Interface (0xFF13): {ctrl or 'NOT FOUND'}")
@@ -263,6 +272,7 @@ def main(argv=None) -> int:
     import milestone_radar as mr
 
     args = build_parser().parse_args(argv)
+    _configure_logging(args.verbose)
     try:
         result = _dispatch(args)
     except AK820Error as exc:

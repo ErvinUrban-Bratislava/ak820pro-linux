@@ -1,0 +1,11 @@
+[Unit]
+Description=Ajazz AK820 Pro - milestone radar refresh (oneshot)
+Documentation=https://github.com/ErvinUrban-Bratislava/ak820pro-linux
+After=multi-user.target
+# Exit 3 (device not found) must not spam restarts: oneshot + no Restart.
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/ak820 radar --view cycle
+# Dedup (sha256 state file) makes repeat runs free: identical payload -> no USB.
+Nice=10

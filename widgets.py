@@ -196,25 +196,22 @@ def get_media_status() -> Dict:
     # 1. Try playerctl if installed
     if shutil.which("playerctl"):
         try:
-            status = subprocess.check_output(
-                ["playerctl", "status"], text=True, stderr=subprocess.DEVNULL, timeout=1.0
+            # B6/§4.3: ONE templated call replaces four subprocesses. playerctl
+            # prints one line per active player; the first line wins. Empty
+            # output means no player is running -> fall through to dbus-send.
+            raw = subprocess.check_output(
+                ["playerctl", "-f", "{{status}}\t{{title}}\t{{artist}}\t{{album}}", "metadata"],
+                text=True, stderr=subprocess.DEVNULL, timeout=1.5,
             ).strip()
-            title = subprocess.check_output(
-                ["playerctl", "metadata", "title"], text=True, stderr=subprocess.DEVNULL, timeout=1.0
-            ).strip()
-            artist = subprocess.check_output(
-                ["playerctl", "metadata", "artist"], text=True, stderr=subprocess.DEVNULL, timeout=1.0
-            ).strip()
-            album = subprocess.check_output(
-                ["playerctl", "metadata", "album"], text=True, stderr=subprocess.DEVNULL, timeout=1.0
-            ).strip()
-            return {
-                "active": True,
-                "status": status,
-                "title": title or "Unknown Title",
-                "artist": artist or "Unknown Artist",
-                "album": album or "",
-            }
+            if raw:
+                status, title, artist, album = (raw.splitlines()[0].split("\t") + ["", "", "", ""])[:4]
+                return {
+                    "active": True,
+                    "status": status or "Stopped",
+                    "title": title or "Unknown Title",
+                    "artist": artist or "Unknown Artist",
+                    "album": album,
+                }
         except Exception:
             pass
 

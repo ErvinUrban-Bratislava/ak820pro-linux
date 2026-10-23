@@ -207,9 +207,17 @@ def wait_for_keypress(timeout=None):
             except OSError:
                 pass
     if not fds:
-        # Fallback to stdin wait if no AK820 Pro hidraw node is accessible
+        # Fallback to stdin wait if no AK820 Pro hidraw node is accessible.
+        # v0.14.0: select() reports /dev/null (and any EOF pipe) as *readable*,
+        # which used to answer an instant false "keypress". Consume the byte
+        # and treat EOF (b"") as no keypress — only real input counts.
         r, _, _ = select.select([sys.stdin], [], [], timeout)
-        return bool(r)
+        if not r:
+            return False
+        try:
+            return bool(os.read(sys.stdin.fileno(), 1))
+        except OSError:
+            return False
     try:
         # Drain stale unread inputs
         for fd in fds:

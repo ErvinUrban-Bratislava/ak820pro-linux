@@ -829,8 +829,8 @@ select = ["E", "F", "W", "I", "UP", "B"]   # UP auto-flags the typing.Dict moder
 | B3 | CI workflow + ruff + mypy; `verify_cmd` registered on the Deck |
 | B4 | ~~Alignment-skip on clean pipe (§3.5, ~2 s/upload saved)~~ **DONE v0.13.0 (§12)** |
 | B5 | Shared `render_common` (fonts/`_load_font` lru_cache/screen constants) |
-| B6 | Single `playerctl` call; progress gated on tty; `logging` + `--verbose` |
-| B7 | Ship systemd units; atomic config writes (m6); `--dry-run` flag |
+| B6 | ~~Single `playerctl` call; progress gated on tty; `logging` + `--verbose`~~ **DONE v0.14.0 (§13)** |
+| B7 | ~~Ship systemd units; atomic config writes (m6); `--dry-run` flag~~ **DONE v0.14.0 (§13)** |
 | B8 | `find_hidraw_devices(base=...)` parameter + fake-sysfs tests; keypress via sysfs scan (D6) |
 
 ### Tier C — nice to have
@@ -1049,3 +1049,28 @@ Implemented exactly per the §3.5 contract:
   align-skipped **0.75 s** — on real hardware the align probe costs ~1.6–2 s, so the saving
   scales accordingly. Locked by `tests/test_align_skip.py` (15 offline tests: skip, dirty
   flip, recovery, dedup interaction, wall-time margin, flag persistence + atomicity).
+
+---
+
+## 13. v0.14.0 — Ops & Observability (B6/B7 + §6.5 closed)
+
+- **B6 logging + `--verbose/-v`**: `cli._configure_logging()` puts every diagnostic on
+  **stderr** (INFO default, DEBUG with `-v`); stdout is reserved for machine-readable
+  data — `events list --json` provably parses with stderr discarded.
+- **B6/§4.3 single `playerctl` call**: one templated
+  `playerctl -f '{{status}}\t{{title}}\t{{artist}}\t{{album}}' metadata` replaces four
+  subprocesses; empty output falls through to the `dbus-send` MPRIS path.
+- **B7 systemd units**: `systemd/ak820-radar.{service,timer}` (oneshot + 30 min timer,
+  no `Restart=` so exit 3 cannot restart-loop) and `ak820-hud.service`
+  (`Restart=on-failure` — pairs with exit 75 EX_TEMPFAIL so an unplug re-spawns the
+  watch loop after re-seating).
+- **B7 `--dry-run`**: global flag; renders the exact payload and prints digest + chunk
+  count with **zero** hidraw opens and **zero** state writes. New `ak820/renderers.py`
+  holds the per-command `(frames, delays, label)` renderers shared by the live upload
+  path and the preview, keeping `cli.py` under the 300-line budget.
+- **§6.5 `sync_clock` DST note**: documented in `device.sync_clock` — naive local
+  wall-clock; the RTC (no timezone field) receives the second occurrence of a
+  fall-back-repeated hour. Firmware limitation, not a host bug.
+- **`wait_for_keypress` stdin-EOF edge**: `select()` reports `/dev/null` as readable;
+  the stdin fallback now consumes the byte and treats EOF (`b""`) as *no keypress*.
+- Locked by `tests/test_observability.py` (14 offline tests); 200/200 suite green.

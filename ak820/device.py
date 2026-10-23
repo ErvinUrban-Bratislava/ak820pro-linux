@@ -164,7 +164,14 @@ class AK820Pro:
         return True
 
     def sync_clock(self, now=None):
-        """Synchronize the given (or system) clock to the keyboard's internal RTC."""
+        """Synchronize the given (or system) clock to the keyboard's internal RTC.
+
+        §6.5 DST note: `datetime.now()` (== `datetime.fromtimestamp(time.time())`)
+        is naive local wall-clock time. During a DST fall-back the repeated hour
+        is ambiguous and the RTC receives the *second* occurrence of it; the
+        AK820 RTC has no timezone/offset field, so this is a documented firmware
+        limitation, not a host bug — the wall-clock value stays correct per tick.
+        """
         now = now or datetime.datetime.now()
         print(f"Synchronizing clock to {now.strftime('%Y-%m-%d %H:%M:%S')}...")
 

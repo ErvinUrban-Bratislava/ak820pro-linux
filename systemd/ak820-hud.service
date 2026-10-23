@@ -1,0 +1,15 @@
+[Unit]
+Description=Ajazz AK820 Pro - live system stats HUD (watch loop)
+Documentation=https://github.com/ErvinUrban-Bratislava/ak820pro-linux
+After=multi-user.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/ak820 hud --watch 15
+# Restart=on-failure pairs with exit 75 (EX_TEMPFAIL): a mid-op unplug exits 75
+# and systemd re-spawns the watch loop once the keyboard is re-seated.
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
