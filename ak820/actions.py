@@ -11,7 +11,7 @@ import sys
 
 from . import state
 from .device import stream_payload
-from .errors import ProtocolError, UploadIncompleteError
+from .errors import FileMissingError, ProtocolError, UploadIncompleteError
 from .protocol import MAX_FRAMES, build_payload
 from .screen import image_to_rgb565, load_frames_from_file
 
@@ -104,7 +104,8 @@ def upload_frames_to_screen(
 def upload_to_screen(dev, file_path: str, fit_mode: str = "fill", force: bool = True):
     """Load an image or GIF from disk and upload it to the TFT display."""
     if not os.path.exists(file_path):
-        raise FileNotFoundError(f"File not found: {file_path}")
+        # D11 (v0.15.0): typed error -> exit 8, never a raw traceback.
+        raise FileMissingError(f"File not found: {file_path}")
     frames, delays = load_frames_from_file(file_path, fit_mode=fit_mode)
     return upload_frames_to_screen(dev, frames, delays, label=os.path.basename(file_path), force=force)
 

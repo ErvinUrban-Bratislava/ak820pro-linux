@@ -11,13 +11,15 @@ import os
 
 from .actions import build_radar_frames
 from .config import today_from_args
+from .errors import FileMissingError
 from .screen import image_to_rgb565, load_frames_from_file
 
 
 def render_upload(args):
     """(frames, delays, label) for `upload <file>` — pure disk + PIL work."""
     if not os.path.exists(args.file):
-        raise FileNotFoundError(f"File not found: {args.file}")
+        # D11 (v0.15.0): typed error -> exit 8, never a raw traceback.
+        raise FileMissingError(f"File not found: {args.file}")
     frames, delays = load_frames_from_file(args.file, fit_mode=args.fit)
     return frames, delays, os.path.basename(args.file)
 

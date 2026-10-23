@@ -10,8 +10,24 @@ import os
 
 
 def today_from_args(args):
-    """--date override (YYYY-MM-DD) or the real today."""
-    return datetime.date.fromisoformat(args.date) if getattr(args, "date", None) else datetime.date.today()
+    """--date override (YYYY-MM-DD) or the real today.
+
+    D10 (v0.15.0): `radar --date banana` used to leak a raw ValueError
+    traceback from `date.fromisoformat` — D4 validated `events add --date`
+    but never this path. Invalid overrides now raise ConfigError (exit 6),
+    the same contract D4 established for malformed event dates.
+    """
+    import milestone_radar as mr
+
+    raw = getattr(args, "date", None)
+    if not raw:
+        return datetime.date.today()
+    try:
+        return datetime.date.fromisoformat(raw)
+    except ValueError:
+        raise mr.ConfigError(
+            f"Invalid --date {raw!r}: expected a YYYY-MM-DD date (e.g. 2026-10-24)."
+        ) from None
 
 
 def cmd_events(args):

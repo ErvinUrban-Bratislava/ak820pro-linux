@@ -247,6 +247,7 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
 | `6` | Invalid events config (malformed event date or corrupt JSON — nothing saved or rendered) | `ConfigError` |
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
+| `8` | Input file not found (`upload <file>` or `--dry-run upload <file>` with a bad path) — user error, retrying will not help | `FileMissingError` |
 | `75` | `EX_TEMPFAIL`: USB device vanished mid-operation — transient, systemd `Restart=on-failure` will re-run the command | `DeviceDisconnectedError` |
 
 All driver errors derive from `AK820Error` (`ak820/errors.py`), which carries the exit code as an attribute. A regression test (`tests/test_invariants.py`) fails the build if this table ever drifts from the shipped taxonomy.

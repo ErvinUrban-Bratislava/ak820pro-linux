@@ -19,6 +19,7 @@
 | `v0.12.0` | 2026-10-24 | Done | Comprehensive Re-Audit & Contract Reconciliation: D8 exit-code drift fixed (`PermissionDeniedError`→4, `ProtocolError`→7 per §3.4; README re-synced to spec not code) + D9 §3.6 completed (handshake counter resets on success, dead control pipe raises exit-75 after 2 consecutive failures) + last open minor defects closed (m5 import-time path deleted, m6 atomic config write, m7 corrupt-JSON→`ConfigError`, m10 friendly `--color` error, m11 PIDS↔udev parity) + §10.2 dependency rule now test-enforced + REVIEW.md §11 audit trail; m1–m12 all closed | `python3 -m unittest` 171/171 + live `probe` |
 | `v0.13.0` | 2026-10-24 | Done | Performance — Alignment-Skip on Known-Clean Pipe (§3.5/§4.1, B4 closed): `state.pipe_known_clean()`/`mark_pipe()` persist a strict-boolean `pipe_clean` flag (atomic read-modify-write, fails dirty on absent/corrupt); repeat uploads skip the ~1.6–2 s `align_data_pipe` after a fully-ACKed SAVE, flip dirty pessimistically before streaming so any crash re-aligns next run; `FakeTransport` starts dirty (`start_idx=37`) proving the skip is state-driven; measured 1.50 s → 0.75 s vs simulator | `python3 -m unittest` 186/186 |
 | `v0.14.0` | 2026-10-24 | Done | Ops & Observability (B6/B7 + §6.5): `logging` to stderr + global `--verbose/-v` (stdout reserved for `events list --json`); single templated `playerctl -f '{{status}}\t{{title}}\t{{artist}}\t{{album}}' metadata` call replaces four subprocesses (§4.3); shipped `systemd/ak820-radar.{service,timer}` + `ak820-hud.service` (`Restart=on-failure` pairs with exit 75); global `--dry-run` (render + sha256 digest + chunk count, zero USB, zero state writes) via new `ak820/renderers.py`; `sync_clock` DST fall-back note (§6.5); `wait_for_keypress` stdin-EOF fix — `/dev/null` no longer a false keypress | `python3 -m unittest` 200/200 |
+| `v0.15.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §14): D10 `radar --date <invalid>` traceback → `ConfigError` exit 6 (D4 never covered the `--date` override; live/preview/dry-run all affected) + D11 missing upload file traceback → new `FileMissingError` exit 8 (README table, `DOCUMENTED_CODES`, package/shim re-exports synced); `run` exit-transparency + lint-lane audit observations recorded | `python3 -m unittest` 214/214 + live exit probes |
 
 ---
 
@@ -112,4 +113,16 @@
   - Single `playerctl -f '{{status}}\t{{title}}\t{{artist}}\t{{album}}' metadata` call instead of four subprocesses (§4.3).
   - Ship `systemd/ak820-radar.{service,timer}` + `ak820-hud.service` (Restart=on-failure pairs with exit 75); `--dry-run` global flag (render + digest + chunk count, no USB).
   - `sync_clock` DST ambiguity note (§6.5); `wait_for_keypress` stdin-EOF edge (instant false "keypress" when stdin is /dev/null).
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [x] **`v0.15.0`** — Comprehensive Re-Audit & Input-Validation Hardening (REVIEW.md §14):
+  - D10: `radar --date <invalid>` (live / `--save-preview` / `--dry-run`) leaked a raw
+    `ValueError` traceback — `today_from_args` now raises `ConfigError` (exit 6) for
+    malformed *and* impossible dates (Feb 30, non-leap Feb 29).
+  - D11: `upload <missing>` / `--dry-run upload <missing>` leaked a raw `FileNotFoundError` —
+    new `FileMissingError` (exit 8); README Exit Codes, `DOCUMENTED_CODES`, and package +
+    `ak820_ctrl` shim re-exports synced in the same commit (invariant tests lock all three).
+  - §14.2 records accepted designs (`run` child-exit transparency) and the queued Tier C
+    lane: numpy RGB565 fast path, ruff/mypy gate, `events remove` no-match UX.
+  - New `tests/test_reaudit_v015.py` (14 offline tests, zero hardware).
   - Verify `python3 -m unittest discover -s tests` passes 100%.

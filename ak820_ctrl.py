@@ -47,6 +47,7 @@ from ak820.errors import (  # noqa: F401
     AK820Error,
     DeviceDisconnectedError,
     DeviceNotFoundError,
+    FileMissingError,
     PermissionDeniedError,
     ProtocolError,
     UploadIncompleteError,

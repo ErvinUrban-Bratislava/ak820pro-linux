@@ -58,6 +58,19 @@ class PermissionDeniedError(AK820Error):
     exit_code = 4
 
 
+class FileMissingError(AK820Error):
+    """The requested input file does not exist (Defect D11, v0.15.0).
+
+    `upload <file>` and `--dry-run upload <file>` used to leak a raw
+    `FileNotFoundError` traceback. Exit 8: a user-input error that will
+    never succeed on retry — distinct from transient 75 (re-seat and
+    re-run) and config 6 (fix events.json) — so wrappers can branch
+    "fix the path" on `$?` alone without parsing stderr.
+    """
+
+    exit_code = 8
+
+
 class UploadIncompleteError(AK820Error):
     """Raised when the device fails to ACK every 4096-byte data chunk (Defect D2).
 

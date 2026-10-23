@@ -1074,3 +1074,41 @@ Implemented exactly per the §3.5 contract:
 - **`wait_for_keypress` stdin-EOF edge**: `select()` reports `/dev/null` as readable;
   the stdin fallback now consumes the byte and treats EOF (`b""`) as *no keypress*.
 - Locked by `tests/test_observability.py` (14 offline tests); 200/200 suite green.
+
+---
+
+## 14. Comprehensive Re-Audit (v0.15.0, 2026-10-24)
+
+Full architectural audit of the 13-module `ak820/` package (largest `cli.py`
+at ~290 lines — all < 300). Suite **200/200 → 214/214** after closing the
+findings below.
+
+### 14.1 New defects found & closed in v0.15.0
+
+| # | Finding | Evidence | Fix |
+|---|---|---|---|
+| **D10** | `radar --date banana` (live, `--save-preview`, and `--dry-run`) leaked a raw `ValueError` traceback from `date.fromisoformat` — D4 validated `events add --date` but never the `--date` override path | `config.today_from_args` | Invalid *or impossible* (Feb 30, non-leap Feb 29) overrides raise `ConfigError` (exit 6) with a friendly message; `tests/test_reaudit_v015.py` |
+| **D11** | `upload <missing>` and `--dry-run upload <missing>` leaked a raw `FileNotFoundError` traceback | `actions.upload_to_screen`, `renderers.render_upload` | New `FileMissingError` → exit **8** (user error, retry never helps — distinct from transient 75 and config 6); README table, `DOCUMENTED_CODES`, package + shim re-exports synced |
+
+### 14.2 Audit observations (accepted designs, no code change)
+
+- **`run` exit-code transparency**: `cmd_run` propagates the wrapped command's
+  exit code verbatim, so a child exiting 3–8/75 is indistinguishable from a
+  driver error to a `$?` wrapper. Accepted deliberately — a wrapper must pass
+  the child's status through (like `nice`/`timeout`), and every driver failure
+  happens *before* the child starts. Recorded here so the collision is a known
+  contract, not a surprise.
+- **B3 lint lane**: `ruff`/`mypy` are not installed on the host; the CI workflow
+  keeps the `py_compile` + unittest gate (mirrored offline by
+  `TestCompileInvariant`). Lint integration stays queued (Tier C).
+- Dependency rule (§10.2), error taxonomy (§3.4), dedup + pipe-clean state
+  machine (§3.5), and the renderers seam (B7) re-verified clean — no new
+  layering violations, no bare excepts outside `state._read_state`'s deliberate
+  fail-dirty catch.
+
+### 14.3 Remaining backlog (queued Tier C)
+
+- Optional numpy RGB565 fast path (§4.4) with byte-identical output test.
+- `ruff` + `mypy` gate once the tools are installed (B3 remainder).
+- `events remove <target>` exits 0 when nothing matched — consider a friendly
+  non-zero path (minor UX; no data risk).

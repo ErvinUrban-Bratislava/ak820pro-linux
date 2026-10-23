@@ -15,6 +15,7 @@ from .device import AK820Pro, stream_payload
 from .errors import (
     AK820Error,
     DeviceDisconnectedError,
+    FileMissingError,
     PermissionDeniedError,
     ProtocolError,
     UploadIncompleteError,
@@ -95,6 +96,7 @@ __all__ = [
     "AK820Pro",
     "AK820ProDevice",
     "DeviceNotFoundError",
+    "FileMissingError",
     "SHOWCASE_PRESETS",
     "apply_idle_backlight",
     "build_parser",
