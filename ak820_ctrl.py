@@ -11,6 +11,8 @@ Protocol reverse-engineered from the official Windows DeviceDriver.exe (Ghidra +
   - Data pipe (Interface 2, Usage Page 0xFF68): 4096-byte HID Output Reports (prepended with 0x00
     to prevent Linux hidraw from stripping leading zero data bytes) + 64-byte Input ACK read-back
   - Upload sequence: START (04 18) -> IMAGE_CFG (04 72 03) -> 4096B chunks + ACK (01 5A 02) -> SAVE (04 02)
+
+Exit codes: 0 = success, 5 = upload incomplete (device dropped chunk ACKs; nothing was flashed).
 """
 
 import argparse
@@ -40,6 +42,17 @@ CHUNK_ACK_TIMEOUT_MS = 1000
 # Linux hidraw ioctl constants for 65-byte buffer ([0x00 report_id] + 64-byte payload)
 HIDIOCSFEATURE_65 = 0xC0000000 | (65 << 16) | (ord("H") << 8) | 0x06
 HIDIOCGFEATURE_65 = 0xC0000000 | (65 << 16) | (ord("H") << 8) | 0x07
+
+
+class UploadIncompleteError(Exception):
+    """Raised when the device fails to ACK every 4096-byte data chunk (Defect D2).
+
+    The upload is aborted *before* the SAVE (04 02) command so a partial payload
+    is never flashed, and the payload digest is never recorded so the next run
+    retries instead of believing the screen is already up to date.
+    """
+
+    exit_code = 5
 
 
 def _parse_usage_page(rd_path):
@@ -384,13 +397,21 @@ def upload_frames_to_screen(
         print(f"\r  Progress: {pct:3d}% ({idx + 1}/{total_chunks} chunks, ACKs: {acks})", end="", flush=True)
     print()
 
-    # Step 4: SAVE (04 02, no FINISH 0xF0)
+    # Defect D2: never report success on dropped ACKs. Abort *before* SAVE (04 02)
+    # so a partial payload is never flashed, and never record the digest so the
+    # next run retries instead of skipping the upload as "already on screen".
+    if acks != total_chunks:
+        raise UploadIncompleteError(
+            f"Upload of '{label}' incomplete: device ACKed {acks}/{total_chunks} chunks. "
+            "Flash save aborted; payload digest not recorded. Retry the upload."
+        )
+
+    # Step 4: SAVE (04 02, no FINISH 0xF0) — only reached on a fully ACKed transfer
     time.sleep(0.10)
     dev.send_feature(_cmd_packet(0x02, enable=False))
     dev.handshake(post_delay=0.10)
     dev.drain_data_acks()
-    if acks == total_chunks:
-        mr.save_payload_hash(digest, label)
+    mr.save_payload_hash(digest, label)
     print("Upload and flash save complete!")
     return True
 
@@ -821,7 +842,7 @@ def build_radar_frames(view: str, upcoming: list, today: datetime.date, slide_se
         return frames, delays
 
 
-def main():
+def _main_impl():
     import json
     import milestone_radar as mr
 
@@ -1152,6 +1173,19 @@ def main():
             else:
                 set_status_backlight(dev, "failed", label=args.label, wait_key=not args.no_wait)
                 sys.exit(res.returncode)
+
+
+def main():
+    """Console entry point (ak820 / ak820-ctrl scripts).
+
+    Maps UploadIncompleteError (Defect D2) to exit code 5 so scripts and
+    systemd units can distinguish a dropped-ACK upload from other failures.
+    """
+    try:
+        _main_impl()
+    except UploadIncompleteError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        sys.exit(UploadIncompleteError.exit_code)
 
 
 if __name__ == "__main__":
