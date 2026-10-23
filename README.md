@@ -1,6 +1,7 @@
 # Ajazz AK820 Pro Linux Screen, Clock & Hardware Controller
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![CI](https://github.com/ErvinUrban-Bratislava/ak820pro-linux/actions/workflows/ci.yml/badge.svg)](https://github.com/ErvinUrban-Bratislava/ak820pro-linux/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/)
 [![Platform: Linux](https://img.shields.io/badge/platform-Linux-green.svg)]()
 [![Tested on Ubuntu 24.04 / 26.04](https://img.shields.io/badge/tested-Ubuntu%2024.04%20%7C%2026.04-orange.svg)]()
@@ -205,7 +206,35 @@ The Ajazz AK820 Pro firmware explicitly restricts vendor-specific HID endpoints 
 
 ---
 
-## Technical Architecture & Findings
+## Exit Codes
+
+Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers can branch on the exit code without parsing stderr:
+
+| Code | Meaning | Raised as |
+|:---|:---|:---|
+| `0` | Success (includes dedup skip: identical payload already on screen) | — |
+| `2` | Argparse usage error (bad/missing flags) | `argparse` |
+| `3` | Device not found, permission denied (udev rule missing?), or USB device vanished mid-operation | `DeviceNotFoundError`, `PermissionDeniedError`, `DeviceDisconnectedError` |
+| `4` | Device answered with a malformed/unexpected reply (ACK magic mismatch — transfer state unknown, aborted) | `ProtocolError` |
+| `5` | Upload incomplete: device dropped chunk ACKs — nothing was flashed, no digest recorded | `UploadIncompleteError` |
+| `6` | Invalid events config (malformed event date — nothing saved or rendered) | `ConfigError` |
+
+All driver errors derive from `AK820Error` (`ak820/errors.py`), which carries the exit code as an attribute. A regression test (`tests/test_invariants.py`) fails the build if this table ever drifts from the shipped taxonomy.
+
+## Architecture
+
+Since v0.9.0 the implementation lives in the `ak820/` package (every module < 300 lines); the top-level `ak820_ctrl.py` is a pure backward-compatibility re-export shim:
+
+| Module | Responsibility |
+|:---|:---|
+| `ak820/protocol.py` | Constants, Sonix packet framing, reply parsing (no I/O) |
+| `ak820/transport.py` | The only fd/IO module: `HidTransport` seam, hidraw discovery, `AK820ProDevice`, keypress wait |
+| `ak820/device.py` | fd-free device logic (`AK820Pro`, `stream_payload`) |
+| `ak820/screen.py` | RGB565 packer, image/GIF fitting, shared render constants + cached fonts |
+| `ak820/state.py` | Payload-hash dedup state (`AK820_STATE_PATH` override for tests) |
+| `ak820/actions.py` / `backlight.py` / `status.py` / `config.py` | Command layer (upload, radar, lighting, HUD/media config) |
+| `ak820/cli.py` | Argparse tree, `DEVICE_HANDLERS` dispatch table, exit-code `main()` |
+| `ak820/errors.py` | Error taxonomy + exit-code contract above |
 
 For deep-dive reverse-engineering details, including:
 - Sonix `SN32F290` ARM Cortex-M0 MCU disassembly and memory maps
@@ -219,10 +248,13 @@ See [`FINDINGS.md`](FINDINGS.md).
 
 ## Testing
 
-Run the automated test suite:
+The full suite (140+ tests) is device-free: a `FakeTransport` SN32F290 firmware simulator with injectable ACK drops exercises the upload protocol with no keyboard attached.
+
 ```bash
 python3 -m unittest discover -s tests -v
 ```
+
+GitHub Actions runs `py_compile` over every shipped module plus the full unittest suite on **Python 3.10, 3.11, 3.12, and 3.13** (`.github/workflows/ci.yml`). `tests/test_invariants.py` additionally locks the cross-cutting contracts: module compile gate, exit-code taxonomy ↔ `main()` mapping, README ↔ `errors.py` sync, and pipx entry points.
 
 ---
 
