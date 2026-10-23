@@ -18,277 +18,92 @@ Exit codes: 0 = success, 5 = upload incomplete (device dropped chunk ACKs; nothi
 
 import argparse
 import datetime
-import fcntl
 import os
 import select
-import struct
 import subprocess
 import sys
 import time
 from PIL import Image, ImageOps
 
-VID = 0x0C45
-PIDS = [0x800A, 0x8009, 0xFEFE]
-
-USAGE_PAGE_CONTROL = 0xFF13  # Interface 3: feature report commands & clock sync
-USAGE_PAGE_DATA = 0xFF68     # Interface 2: 4096-byte bulk image chunks + 64B ACK
-
-SCREEN_WIDTH = 128
-SCREEN_HEIGHT = 128
-CHUNK_SIZE = 4096
-# Sonix firmware GIF header stores the frame count in a single byte, so more
-# than 255 frames silently wrap (& 0xFF) and the device animates garbage.
-MAX_FRAMES = 255
-CMD_DELAY = 0.050
-IMG_CFG_SETUP_DELAY = 0.350
-CHUNK_ACK_TIMEOUT_MS = 1000
-
-# Linux hidraw ioctl constants for 65-byte buffer ([0x00 report_id] + 64-byte payload)
-HIDIOCSFEATURE_65 = 0xC0000000 | (65 << 16) | (ord("H") << 8) | 0x06
-HIDIOCGFEATURE_65 = 0xC0000000 | (65 << 16) | (ord("H") << 8) | 0x07
-
-
-class UploadIncompleteError(Exception):
-    """Raised when the device fails to ACK every 4096-byte data chunk (Defect D2).
-
-    The upload is aborted *before* the SAVE (04 02) command so a partial payload
-    is never flashed, and the payload digest is never recorded so the next run
-    retries instead of believing the screen is already up to date.
-    """
-
-    exit_code = 5
-
-
-def _parse_usage_page(rd_path):
-    """Extract the top-level Usage Page from a HID report descriptor."""
-    try:
-        with open(rd_path, "rb") as f:
-            desc = f.read()
-    except OSError:
-        return None
-
-    i = 0
-    while i < len(desc):
-        byte = desc[i]
-        size = byte & 0x03
-        if size == 3:
-            size = 4
-        tag = byte & 0xFC
-        if i + 1 + size > len(desc):
-            break
-        if tag == 0x04:  # Usage Page
-            if size == 1:
-                return desc[i + 1]
-            elif size == 2:
-                return desc[i + 1] | (desc[i + 2] << 8)
-            elif size == 4:
-                return struct.unpack_from("<I", desc, i + 1)[0]
-        i += 1 + size
-    return None
-
-
-def _read_hid_identity(dev_dir):
-    """Parse (vid, pid) from a sysfs device dir's uevent HID_ID line, or None."""
-    try:
-        with open(os.path.join(dev_dir, "uevent")) as f:
-            uevent = f.read()
-    except OSError:
-        return None
-
-    hid_id_line = [l for l in uevent.splitlines() if l.startswith("HID_ID=")]
-    if not hid_id_line:
-        return None
-    parts = hid_id_line[0].split("=")[1].split(":")
-    if len(parts) != 3:
-        return None
-
-    try:
-        return int(parts[1], 16), int(parts[2], 16)
-    except ValueError:
-        return None
-
-
-def find_hidraw_devices(base="/sys/class/hidraw"):
-    """Locate the Data pipe (0xFF68) and Control pipe (0xFF13) for the AK820 Pro.
-
-    `base` is parameterized so tests can point at a fake sysfs tree (D6/B8).
-    """
-    tft_dev = None
-    ctrl_dev = None
-    if not os.path.isdir(base):
-        return None, None
-
-    for entry in sorted(os.listdir(base)):
-        dev_dir = os.path.join(base, entry, "device")
-        identity = _read_hid_identity(dev_dir)
-        if identity is None:
-            continue
-
-        dev_vid, dev_pid = identity
-        if dev_vid != VID or dev_pid not in PIDS:
-            continue
-
-        usage_page = _parse_usage_page(os.path.join(dev_dir, "report_descriptor"))
-        if usage_page == USAGE_PAGE_DATA:
-            tft_dev = f"/dev/{entry}"
-        elif usage_page == USAGE_PAGE_CONTROL:
-            ctrl_dev = f"/dev/{entry}"
-
-    return tft_dev, ctrl_dev
-
-
-def find_keyboard_hidraw(base="/sys/class/hidraw"):
-    """All hidraw nodes belonging to the AK820 Pro's own HID interfaces (D6).
-
-    hidraw numbering follows probe-attach order, not per-device identity:
-    hardcoded /dev/hidrawN paths watch the wrong device once a hub or dongle
-    shifts the numbering. Scanning sysfs by VID/PID keeps discovery stable.
-    """
-    paths = []
-    if not os.path.isdir(base):
-        return paths
-    for entry in sorted(os.listdir(base)):
-        identity = _read_hid_identity(os.path.join(base, entry, "device"))
-        if identity is None:
-            continue
-        dev_vid, dev_pid = identity
-        if dev_vid == VID and dev_pid in PIDS:
-            paths.append(f"/dev/{entry}")
-    return paths
+# v0.7.0 modular package (REVIEW.md §10): protocol framing, the transport seam,
+# and the fd-free AK820Pro state machine live in `ak820/`. Everything public is
+# re-exported here so every existing `ak820_ctrl.<name>` import keeps working.
+from ak820.device import AK820Pro, stream_payload
+from ak820.errors import (  # noqa: F401
+    AK820Error,
+    DeviceDisconnectedError,
+    PermissionDeniedError,
+    ProtocolError,
+    UploadIncompleteError,
+)
+from ak820.protocol import (  # noqa: F401
+    ACK_MAGIC,
+    CHUNK_ACK_TIMEOUT_MS,
+    CHUNK_SIZE,
+    CMD_DELAY,
+    HIDIOCGFEATURE_65,
+    HIDIOCSFEATURE_65,
+    IMG_CFG_SETUP_DELAY,
+    LIGHT_MODES,
+    MAX_FRAMES,
+    MAX_LIGHT_MODE,
+    PIDS,
+    SCREEN_HEIGHT,
+    SCREEN_WIDTH,
+    USAGE_PAGE_CONTROL,
+    USAGE_PAGE_DATA,
+    VID,
+    _build_gif_header,
+    _cmd_packet,
+    build_payload,
+    parse_hex_color,
+    parse_mode,
+)
+from ak820.transport import (  # noqa: F401
+    LinuxHidrawTransport,
+    find_hidraw_devices,
+    find_keyboard_hidraw,
+)
 
 
 class AK820ProDevice:
-    """Manages low-level HID communication with the Ajazz AK820 Pro."""
+    """Thin factory: opens the hidraw nodes and delegates every protocol call
+    to an `AK820Pro` state machine over a `LinuxHidrawTransport` (v0.7.0 seam).
+    Constructor signature and context-manager usage are unchanged for callers."""
 
     def __init__(self, tft_path, ctrl_path):
         self.tft_path = tft_path
         self.ctrl_path = ctrl_path
-        self.ctrl_fd = None
-        self.data_fd = None
+        self.pro = None
 
     def __enter__(self):
-        if self.ctrl_path:
-            self.ctrl_fd = os.open(self.ctrl_path, os.O_RDWR)
-        if self.tft_path:
-            self.data_fd = os.open(self.tft_path, os.O_RDWR)
+        ctrl_fd = data_fd = None
+        try:
+            if self.ctrl_path:
+                ctrl_fd = os.open(self.ctrl_path, os.O_RDWR)
+            if self.tft_path:
+                data_fd = os.open(self.tft_path, os.O_RDWR)
+        except OSError:
+            # m1: never leak the fd that did open when the second one fails
+            for fd in (ctrl_fd, data_fd):
+                if fd is not None:
+                    os.close(fd)
+            raise
+        self.pro = AK820Pro(LinuxHidrawTransport(ctrl_fd, data_fd))
         return self
 
     def __exit__(self, *args):
-        if self.data_fd is not None:
-            os.close(self.data_fd)
-            self.data_fd = None
-        if self.ctrl_fd is not None:
-            os.close(self.ctrl_fd)
-            self.ctrl_fd = None
+        if self.pro is not None:
+            self.pro.close()
+            self.pro = None
 
-    def send_feature(self, data64):
-        """Send a 64-byte feature report with Report ID 0x00."""
-        buf = bytearray(65)
-        buf[0] = 0x00  # Always report ID 0x00 so kernel strips it cleanly
-        buf[1:1 + min(len(data64), 64)] = data64[:64]
-        fcntl.ioctl(self.ctrl_fd, HIDIOCSFEATURE_65, bytes(buf))
-
-    def get_feature(self):
-        """Read back a 64-byte feature report (handshake ACK)."""
-        buf = bytearray(65)
-        buf[0] = 0x00
-        fcntl.ioctl(self.ctrl_fd, HIDIOCGFEATURE_65, buf)
-        return bytes(buf[1:])
-
-    def handshake(self, post_delay=CMD_DELAY):
-        """Wait for MCU main loop to process SET_FEATURE, then read GET_FEATURE ACK."""
-        time.sleep(CMD_DELAY)
-        try:
-            resp = self.get_feature()
-        except OSError:
-            resp = None
-        time.sleep(post_delay)
-        return resp
-
-    def drain_data_acks(self):
-        """Drain any pending 64-byte ACKs from the data pipe."""
-        while select.select([self.data_fd], [], [], 0.01)[0]:
-            try:
-                os.read(self.data_fd, 64)
-            except OSError:
-                break
-
-    def send_data_chunk(self, chunk4096, timeout_ms=CHUNK_ACK_TIMEOUT_MS):
-        """Write a 4096-byte chunk to Interface 2 and wait for the 64-byte ACK."""
-        # Prepend 0x00 so Linux hidraw strips the report ID byte and always sends 4096 bytes
-        os.write(self.data_fd, b"\x00" + bytes(chunk4096))
-        r, _, _ = select.select([self.data_fd], [], [], timeout_ms / 1000.0)
-        if r:
-            try:
-                return os.read(self.data_fd, 64)
-            except OSError:
-                return None
-        return None
-
-    def align_data_pipe(self):
-        """
-        Synchronize the keyboard's 64-packet (4096B) ring index (0x2000003A) to 0
-        using a two-stage (8-packet coarse + 1-packet fine) probe that stays well
-        under the firmware's 2.0s watchdog while waiting for full SPI sector erases.
-        """
-        self.drain_data_acks()
-        self.send_feature(_cmd_packet(0x18, enable=False))
-        self.handshake()
-
-        img_cfg = bytearray(64)
-        img_cfg[0] = 0x04
-        img_cfg[1] = 0x72
-        img_cfg[2] = 0x03
-        img_cfg[8] = 0x03  # 3 chunks so 2 alignment ACKs never trigger final-chunk save
-        img_cfg[9] = 0x00
-        self.send_feature(img_cfg)
-        self.handshake(post_delay=IMG_CFG_SETUP_DELAY)
-        self.drain_data_acks()
-
-        pkt64 = b"\x00" + (b"\x00" * 64)
-
-        # Stage 1: Coarse 8-packet bursts (max 8 bursts * 200ms = 1.6s < 2.0s watchdog)
-        coarse_burst = 0
-        for b in range(1, 9):
-            for _ in range(8):
-                os.write(self.data_fd, pkt64)
-            r, _, _ = select.select([self.data_fd], [], [], 0.22)
-            if r:
-                os.read(self.data_fd, 64)
-                coarse_burst = b
-                break
-
-        # Stage 2: Advance 56 packets (putting index in 56..63), then step 1 packet at a time
-        for _ in range(56):
-            os.write(self.data_fd, pkt64)
-        fine_pkt = 0
-        for p in range(1, 9):
-            os.write(self.data_fd, pkt64)
-            r, _, _ = select.select([self.data_fd], [], [], 0.22)
-            if r:
-                os.read(self.data_fd, 64)
-                fine_pkt = p
-                break
-
-        # Stage 3: Send the 3rd chunk (exact 4096B) + SAVE (0x02) so remaining_chunks hits 0
-        # and usb_data_mode transitions cleanly 5 -> 3 -> 0 while keeping sub_packet_idx at 0.
-        ack3 = self.send_data_chunk(b"\x00" * CHUNK_SIZE, timeout_ms=CHUNK_ACK_TIMEOUT_MS)
-        time.sleep(0.10)
-        self.send_feature(_cmd_packet(0x02, enable=False))
-        self.handshake(post_delay=0.10)
-        self.drain_data_acks()
-        acked = (coarse_burst > 0 and fine_pkt > 0 and ack3 is not None)
-        return (coarse_burst, fine_pkt), acked
-
-
-def _cmd_packet(cmd_byte, sub_byte=0x00, enable=True):
-    pkt = bytearray(64)
-    pkt[0] = 0x04
-    pkt[1] = cmd_byte
-    pkt[2] = sub_byte
-    if enable:
-        pkt[8] = 0x01
-    return pkt
+    def __getattr__(self, name):
+        """Delegate protocol calls (send_feature, handshake, send_data_chunk,
+        align_data_pipe, sync_clock, ...) to the underlying AK820Pro."""
+        pro = self.__dict__.get("pro")
+        if pro is not None:
+            return getattr(pro, name)
+        raise AttributeError(name)
 
 
 def image_to_rgb565(img):
@@ -381,25 +196,9 @@ def upload_frames_to_screen(
     force: bool = True,
 ):
     """Execute START -> IMAGE_CFG -> DATA+ACK -> SAVE for a list of RGB565 frames."""
-    # Defect D3: the GIF header encodes the frame count in one byte, so >255
-    # frames silently wrap (& 0xFF). Reject the upload outright *before* any
-    # USB packet (alignment, START, IMAGE_CFG) reaches the device.
-    if len(frames) > MAX_FRAMES:
-        raise ValueError(
-            f"Cannot upload {len(frames)} frames: the firmware GIF header stores "
-            f"the frame count in a single byte (max {MAX_FRAMES}). "
-            "Shorten the animation or reduce its loop count."
-        )
-    num_frames = len(frames)
-    header = _build_gif_header(num_frames, delays_ms)
-
-    payload = bytearray(header)
-    for f in frames:
-        payload.extend(f)
-
-    total_chunks = (len(payload) + CHUNK_SIZE - 1) // CHUNK_SIZE
-    payload.extend(b"\x00" * (total_chunks * CHUNK_SIZE - len(payload)))
-    payload_bytes = bytes(payload)
+    # Defect D3: build_payload rejects >MAX_FRAMES outright (single-byte frame
+    # counter), *before* any USB packet (alignment, START, IMAGE_CFG) is produced.
+    payload_bytes, num_frames, total_chunks = build_payload(frames, delays_ms)
 
     import milestone_radar as mr
     should_upload, digest = mr.check_and_record_payload_hash(payload_bytes, label, force=force)
@@ -416,46 +215,20 @@ def upload_frames_to_screen(
 
     print(f"Uploading '{label}' ({num_frames} frame(s), {total_chunks} chunks)...")
 
-    # Step 1: START (enable=False)
-    dev.send_feature(_cmd_packet(0x18, enable=False))
-    dev.handshake()
+    def _progress(idx, total, acks):
+        pct = int((idx + 1) / total * 100)
+        print(f"\r  Progress: {pct:3d}% ({idx + 1}/{total} chunks, ACKs: {acks})", end="", flush=True)
 
-    # Step 2: IMAGE_CFG (04 72 03 ... chunk_count_le16)
-    img_cfg = bytearray(64)
-    img_cfg[0] = 0x04
-    img_cfg[1] = 0x72
-    img_cfg[2] = 0x03
-    img_cfg[8] = total_chunks & 0xFF
-    img_cfg[9] = (total_chunks >> 8) & 0xFF
-    dev.send_feature(img_cfg)
-    dev.handshake(post_delay=IMG_CFG_SETUP_DELAY)
-    dev.drain_data_acks()
-
-    # Step 3: Stream 4096-byte chunks and strictly await per-chunk ACK
-    acks = 0
-    for idx in range(total_chunks):
-        chunk = payload_bytes[idx * CHUNK_SIZE:(idx + 1) * CHUNK_SIZE]
-        ack = dev.send_data_chunk(chunk, timeout_ms=CHUNK_ACK_TIMEOUT_MS)
-        if ack is not None:
-            acks += 1
-        pct = int((idx + 1) / total_chunks * 100)
-        print(f"\r  Progress: {pct:3d}% ({idx + 1}/{total_chunks} chunks, ACKs: {acks})", end="", flush=True)
+    # D2/m3 strict ACK accounting lives in ak820.device.stream_payload: SAVE is
+    # only reached when every chunk was ACKed, so on failure the digest below is
+    # never recorded and the next run retries instead of skipping the upload.
+    try:
+        stream_payload(dev, payload_bytes, total_chunks, progress=_progress)
+    except UploadIncompleteError:
+        print()
+        raise
     print()
 
-    # Defect D2: never report success on dropped ACKs. Abort *before* SAVE (04 02)
-    # so a partial payload is never flashed, and never record the digest so the
-    # next run retries instead of skipping the upload as "already on screen".
-    if acks != total_chunks:
-        raise UploadIncompleteError(
-            f"Upload of '{label}' incomplete: device ACKed {acks}/{total_chunks} chunks. "
-            "Flash save aborted; payload digest not recorded. Retry the upload."
-        )
-
-    # Step 4: SAVE (04 02, no FINISH 0xF0) — only reached on a fully ACKed transfer
-    time.sleep(0.10)
-    dev.send_feature(_cmd_packet(0x02, enable=False))
-    dev.handshake(post_delay=0.10)
-    dev.drain_data_acks()
     mr.save_payload_hash(digest, label)
     print("Upload and flash save complete!")
     return True
@@ -469,96 +242,14 @@ def upload_to_screen(dev: AK820ProDevice, file_path: str, fit_mode: str = "fill"
     return upload_frames_to_screen(dev, frames, delays, label=os.path.basename(file_path), force=force)
 
 
-def sync_clock(dev: AK820ProDevice):
-    """Synchronize system clock to the keyboard's internal RTC."""
-    now = datetime.datetime.now()
-    ts = now.strftime("%Y-%m-%d %H:%M:%S")
-    print(f"Synchronizing clock to {ts}...")
+def sync_clock(dev: AK820ProDevice, now=None):
+    """Synchronize system clock to the keyboard's internal RTC.
 
-    # 1. START
-    dev.send_feature(_cmd_packet(0x18, enable=True))
-    time.sleep(CMD_DELAY)
-
-    # 2. TIME_CFG
-    dev.send_feature(_cmd_packet(0x28, enable=True))
-    dev.handshake()
-
-    # 3. TIME_DATA
-    data = bytearray(64)
-    data[0] = 0x00
-    data[1] = 0x01
-    data[2] = 0x5A
-    data[3] = now.year - 2000
-    data[4] = now.month
-    data[5] = now.day
-    data[6] = now.hour
-    data[7] = now.minute
-    data[8] = now.second
-    data[9] = 0x00
-    data[10] = 0x04
-    data[62] = 0xAA
-    data[63] = 0x55
-    dev.send_feature(data)
-    time.sleep(CMD_DELAY)
-
-    # 4. SAVE
-    dev.send_feature(_cmd_packet(0x02, enable=False))
-    dev.handshake()
-    print("Clock synced successfully!")
-
-
-LIGHT_MODES = {
-    "off": 0,
-    "static": 1,
-    "single-on": 2,
-    "single-off": 3,
-    "glittering": 4,
-    "falling": 5,
-    "colourful": 6,
-    "breath": 7,
-    "spectrum": 8,
-    "outward": 9,
-    "scrolling": 10,
-    "rolling": 11,
-    "rotating": 12,
-    "explode": 13,
-    "launch": 14,
-    "ripples": 15,
-    "flowing": 16,
-    "pulsating": 17,
-    "tilt": 18,
-    "shuttle": 19,
-}
-
-MAX_LIGHT_MODE = max(LIGHT_MODES.values())
-
-
-def parse_mode(value: str) -> int:
-    """Resolve a lighting mode spec (name or number) to an int in 0..19.
-
-    Mode names are matched case-insensitively; numeric values are validated
-    against the firmware range 0..MAX_LIGHT_MODE. Raises ValueError with a
-    friendly message for unknown names or out-of-range numbers (Defect D1:
-    the old eager `int(args.mode)` default crashed on any mode name).
+    The byte-level sequence lives in `ak820.device.AK820Pro.sync_clock`;
+    `now` is injectable for offline tests (REVIEW.md §5.4).
     """
-    if value is None:
-        raise ValueError("No lighting mode given.")
-    text = str(value).strip()
-    if not text:
-        raise ValueError("No lighting mode given.")
-    key = text.lower()
-    if key in LIGHT_MODES:
-        return LIGHT_MODES[key]
-    try:
-        num = int(text)
-    except ValueError:
-        raise ValueError(
-            f"Unknown lighting mode {value!r}. Use a mode name "
-            f"({', '.join(LIGHT_MODES)}) or an integer 0..{MAX_LIGHT_MODE}."
-        ) from None
-    if not 0 <= num <= MAX_LIGHT_MODE:
-        raise ValueError(f"Lighting mode {num} is out of range 0..{MAX_LIGHT_MODE}.")
-    return num
+    dev.sync_clock(now=now)
+
 
 SHOWCASE_PRESETS = [
     {
@@ -642,15 +333,6 @@ SHOWCASE_PRESETS = [
         "desc": "Zero LEDs, completely dark",
     },
 ]
-
-
-def parse_hex_color(hex_str: str) -> tuple:
-    h = hex_str.lstrip("#")
-    if len(h) == 3:
-        h = "".join([c * 2 for c in h])
-    if len(h) != 6:
-        raise ValueError(f"Invalid hex color: '{hex_str}' (expected #RRGGBB or #RGB)")
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
 
 
 def set_backlight(

@@ -51,3 +51,4 @@ ak820-ctrl = "ak820_ctrl:main"
 
 [tool.setuptools]
 py-modules = ["ak820_ctrl", "milestone_radar", "widgets"]
+packages = ["ak820"]
