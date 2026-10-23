@@ -25,7 +25,8 @@ from .handlers import (  # noqa: F401  (backward-compat re-exports)
 )
 from .parser import build_parser  # noqa: F401  (backward-compat re-export)
 from .renderers import DRY_RENDERERS
-from .transport import AK820ProDevice, find_hidraw_devices
+from .discovery import find_hidraw_devices  # v0.19.0: sysfs discovery module (§18)
+from .transport import AK820ProDevice
 
 log = logging.getLogger("ak820")
 

@@ -23,6 +23,7 @@
 | `v0.16.0` | 2026-10-24 | Done | Modular Package Refactoring (REVIEW.md §15): `cli.py` (289 lines, at the §10 budget) split three ways — new `ak820/parser.py` (argparse surface, 104 lines) + new `ak820/handlers.py` (device-bound `(args, dev)` handlers + `DEVICE_HANDLERS` + `run_watch_loop`, 114 lines) + slim 106-line `cli.py` keeping offline routing, `--dry-run`, discovery and the §3.4 exit-code `main()`; every split name re-exported (identity, not copy) so `ak820.cli.*`, `ak820.*` and the `ak820_ctrl` shim are byte-for-byte compatible entry points | `python3 -m unittest` 228/228 + live `probe`/`--dry-run` via shim |
 | `v0.17.0` | 2026-10-24 | Done | Timeout Guards & Bounded I/O (REVIEW.md §16): `drain_data_acks` capped at `DRAIN_MAX_READS` (a chattering pipe can no longer hang the CLI), `stream_payload` whole-transfer deadline (30 s base + 2× per-chunk budget, injectable clock) raising `UploadIncompleteError` exit 5 before SAVE, `LinuxHidrawTransport.write_data` write-all loop with stall cap (short writes completed; wedged pipe -> `ProtocolError` exit 7), FakeTransport `flood` fault | `python3 -m unittest` 243/243 + live `probe`/`--dry-run` via shim |
 | `v0.18.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §17): D12 `upload <non-image/dir/corrupt>` raw PIL traceback → new `InvalidFileError` exit **9** via shared `actions.load_frames_guarded` (live + `--dry-run` fail identically) + D13 `events remove <no-match>` silent success → `ConfigError` exit 6 with config left byte-identical + D14 `--save-preview` path errors (missing parents auto-created; unusable targets exit 9) + m13 version drift (`__version__` 0.9.0 vs pyproject 1.0.0) locked equal by test; README/`DOCUMENTED_CODES`/package/shim synced in one invariant-locked commit | `python3 -m unittest` 263/263 + live exit probes 8/9 via shim |
+| `v0.19.0` | 2026-10-24 | Done | Modular Package Refactoring (REVIEW.md §18): sysfs discovery (`find_hidraw_devices`/`find_keyboard_hidraw` + helpers) extracted byte-identically from `transport.py` (299 → 229 lines) into new `ak820/discovery.py` (99 lines) — *which* nodes vs *how* to talk over them; identity re-exports keep `transport`/`ak820`/`ak820_ctrl`/`cli` and all mock-patch targets intact; §10.2 refined (fd/io grep stays transport-only; sysfs path strings allowed in `discovery.py`); `discovery → {protocol}` keeps the graph acyclic | `python3 -m unittest` 278/278 + live `probe`/`--dry-run` via shim |
 
 ---
 
@@ -171,4 +172,17 @@
   - m13: `ak820.__version__` (0.9.0) vs pyproject (1.0.0) drift — both 0.18.0,
     locked equal by `TestVersionSync`.
   - New `tests/test_reaudit_v018.py` (20 offline tests, zero hardware).
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [x] **`v0.19.0`** — Modular Package Refactoring: `transport.py` → `discovery.py` split (REVIEW.md §18):
+  - Sysfs scanning (`find_hidraw_devices`, `find_keyboard_hidraw`,
+    `_read_hid_identity`, `_parse_usage_page`) extracted byte-identically into
+    new `ak820/discovery.py` (99 lines); `transport.py` 299 → 229 lines and now
+    owns only the fd/ioctl/select seam (`HidTransport`, `LinuxHidrawTransport`,
+    `wait_for_keypress`, `AK820ProDevice`).
+  - Identity re-exports through `transport`, `ak820`, `ak820_ctrl` shim and
+    `cli` keep every historical import site and mock-patch target working.
+  - §10.2 refined, not relaxed: fd/io tokens remain transport-only (grep-locked);
+    sysfs path strings allowed in `transport.py` or `discovery.py`.
+  - New `tests/test_discovery_v019.py` (13 offline tests, zero hardware).
   - Verify `python3 -m unittest discover -s tests` passes 100%.

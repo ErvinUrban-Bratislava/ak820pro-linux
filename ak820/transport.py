@@ -1,9 +1,14 @@
-"""HID transport seam: the one module allowed to touch fds/ioctls/sysfs (v0.7.0).
+"""HID transport seam: the one module allowed to touch fds/ioctls/select (v0.7.0).
 
 `HidTransport` is the injection seam from REVIEW.md §5.2: everything above it
 (`device.AK820Pro`) is a pure state machine testable without hardware.
 `LinuxHidrawTransport` wraps real fds and translates errno into the
 `errors.py` taxonomy (§3.3), so callers never see bare OSErrors.
+
+v0.19.0 (§18): sysfs *discovery* (which /dev nodes are ours) moved to
+`discovery.py`; this module re-exports those names (identity, not copies) so
+every historical import site — `ak820.transport.find_hidraw_devices`, the
+`ak820_ctrl` shim, and mock-patch targets in the test suite — keeps working.
 """
 
 import errno
@@ -14,8 +19,13 @@ import sys
 from typing import Optional, Protocol, runtime_checkable
 
 from . import protocol
+from .discovery import (  # v0.19.0 re-exports (identity, not copies): §18
+    _parse_usage_page,
+    _read_hid_identity,
+    find_hidraw_devices,
+    find_keyboard_hidraw,
+)
 from .errors import DeviceDisconnectedError, PermissionDeniedError, ProtocolError
-from .protocol import parse_usage_page
 
 
 @runtime_checkable
@@ -126,86 +136,6 @@ class LinuxHidrawTransport:
                 raise translated from exc
             return None  # EAGAIN/EBADF etc: treat as "no ACK within timeout"
         return None
-
-
-def _read_hid_identity(dev_dir):
-    """Parse (vid, pid) from a sysfs device dir's uevent HID_ID line, or None."""
-    try:
-        with open(os.path.join(dev_dir, "uevent")) as f:
-            uevent = f.read()
-    except OSError:
-        return None
-
-    hid_id_line = [l for l in uevent.splitlines() if l.startswith("HID_ID=")]
-    if not hid_id_line:
-        return None
-    parts = hid_id_line[0].split("=")[1].split(":")
-    if len(parts) != 3:
-        return None
-
-    try:
-        return int(parts[1], 16), int(parts[2], 16)
-    except ValueError:
-        return None
-
-
-def _parse_usage_page(rd_path):
-    """Extract the top-level Usage Page from a HID report descriptor file."""
-    try:
-        with open(rd_path, "rb") as f:
-            desc = f.read()
-    except OSError:
-        return None
-    return parse_usage_page(desc)
-
-
-def find_hidraw_devices(base="/sys/class/hidraw"):
-    """Locate the Data pipe (0xFF68) and Control pipe (0xFF13) for the AK820 Pro.
-
-    `base` is parameterized so tests can point at a fake sysfs tree (D6/B8).
-    """
-    tft_dev = None
-    ctrl_dev = None
-    if not os.path.isdir(base):
-        return None, None
-
-    for entry in sorted(os.listdir(base)):
-        dev_dir = os.path.join(base, entry, "device")
-        identity = _read_hid_identity(dev_dir)
-        if identity is None:
-            continue
-
-        dev_vid, dev_pid = identity
-        if dev_vid != protocol.VID or dev_pid not in protocol.PIDS:
-            continue
-
-        usage_page = _parse_usage_page(os.path.join(dev_dir, "report_descriptor"))
-        if usage_page == protocol.USAGE_PAGE_DATA:
-            tft_dev = f"/dev/{entry}"
-        elif usage_page == protocol.USAGE_PAGE_CONTROL:
-            ctrl_dev = f"/dev/{entry}"
-
-    return tft_dev, ctrl_dev
-
-
-def find_keyboard_hidraw(base="/sys/class/hidraw"):
-    """All hidraw nodes belonging to the AK820 Pro's own HID interfaces (D6).
-
-    hidraw numbering follows probe-attach order, not per-device identity:
-    hardcoded /dev/hidrawN paths watch the wrong device once a hub or dongle
-    shifts the numbering. Scanning sysfs by VID/PID keeps discovery stable.
-    """
-    paths = []
-    if not os.path.isdir(base):
-        return paths
-    for entry in sorted(os.listdir(base)):
-        identity = _read_hid_identity(os.path.join(base, entry, "device"))
-        if identity is None:
-            continue
-        dev_vid, dev_pid = identity
-        if dev_vid == protocol.VID and dev_pid in protocol.PIDS:
-            paths.append(f"/dev/{entry}")
-    return paths
 
 
 def wait_for_keypress(timeout=None):

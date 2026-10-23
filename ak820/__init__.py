@@ -9,7 +9,7 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.18.0"  # kept in lockstep with pyproject [project] version
+__version__ = "0.19.0"  # kept in lockstep with pyproject [project] version
 
 from .device import AK820Pro, stream_payload
 from .errors import (
@@ -63,11 +63,13 @@ from .state import (
     get_state_path,
     save_payload_hash,
 )
+from .discovery import (  # v0.19.0: sysfs discovery split out of transport (§18)
+    find_hidraw_devices,
+    find_keyboard_hidraw,
+)
 from .transport import (
     HidTransport,
     LinuxHidrawTransport,
-    find_hidraw_devices,
-    find_keyboard_hidraw,
 )
 
 # --- v0.9.0: command layer (imports last: cli pulls in the whole stack) -------

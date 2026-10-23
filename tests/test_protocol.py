@@ -181,12 +181,19 @@ class TestBackwardCompatShim(unittest.TestCase):
         symbol names like find_hidraw_devices in __init__ are fine); no
         milestone_radar import in protocol/device paths."""
         pkg = ROOT / "ak820"
-        os_tokens = ("fcntl", "select.select", "os.open", "/dev/hidraw", "/sys/class/hidraw")
+        # fd/io primitives: transport.py ONLY (§10.2, unchanged by v0.19.0).
+        fd_io_tokens = ("fcntl", "select.select", "os.open")
+        # Sysfs/devfs path *strings*: transport.py or discovery.py (§18 —
+        # discovery answers *which* nodes with plain reads, no fd/io).
+        sysfs_path_tokens = ("/dev/hidraw", "/sys/class/hidraw")
         for py in sorted(pkg.glob("*.py")):
             text = py.read_text()
             if py.name != "transport.py":
-                for token in os_tokens:
+                for token in fd_io_tokens:
                     self.assertNotIn(token, text, f"{py.name} uses {token!r}")
+                if py.name != "discovery.py":
+                    for token in sysfs_path_tokens:
+                        self.assertNotIn(token, text, f"{py.name} uses {token!r}")
             if py.name in ("protocol.py", "device.py"):
                 self.assertNotIn("import milestone_radar", text)
 

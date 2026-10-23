@@ -1214,3 +1214,49 @@ three new defects found, all reproduced live before fixing. Suite
 - `ruff` + `mypy` gate once the tools are installed (B3 remainder).
 - `probe --json` for AI-tool consumption (matches `events list --json`).
 - Events-config schema validation (`jsonschema`) if the file grows more knobs.
+
+---
+
+## 18. Modular Package Refactoring — `transport.py` Split: `discovery.py` (v0.19.0, 2026-10-24)
+
+`transport.py` had grown to 299 lines — one line under the §10 budget — by
+mixing two distinct responsibilities: *which* hidraw nodes belong to the
+keyboard (sysfs scanning) and *how* to talk over them (fd/ioctl/select I/O).
+v0.19.0 extracts the scanning half into `ak820/discovery.py` (99 lines):
+
+- **Moved**: `_read_hid_identity`, `_parse_usage_page`, `find_hidraw_devices`,
+  `find_keyboard_hidraw` — byte-identical bodies, `base=` testability intact.
+- **Kept in `transport.py`** (229 lines): `HidTransport`, `LinuxHidrawTransport`,
+  `wait_for_keypress` (polls fds — fd/io stays here), `AK820ProDevice`.
+- **Identity re-exports**: `transport` re-imports all four names from
+  `discovery`, so `ak820.transport.find_hidraw_devices`, the `ak820_ctrl`
+  shim, `ak820.*`, and every `mock.patch.object(transport, ...)` target in
+  the existing suite keep working unchanged (locked by
+  `tests/test_discovery_v019.py`).
+
+### 18.1 §10.2 dependency rule — refined, not relaxed
+
+The fd/io seam is unchanged: `fcntl`, `select`, and raw fd opens (`os.open`)
+live **only** in `transport.py`, still grep-enforced across every other
+module. What moved is the *sysfs path string* (`/sys/class/hidraw` default)
+and plain attribute-file reads (`open()`/`os.listdir`) — no fd/io — which
+now live in `discovery.py`. The CI grep test (`test_protocol.py`) therefore
+splits its token list: fd/io tokens stay transport-only; sysfs path strings
+are allowed in `transport.py` **or** `discovery.py`. `discovery.py` is
+deliberately token-clean otherwise (docstrings included) so the grep stays
+mechanical.
+
+Dependency graph addition (acyclic): `discovery → {protocol}`.
+`transport → {discovery, protocol, errors}`; nothing imports `transport`
+from `discovery`, so no cycle (fresh-interpreter import test included).
+
+### 18.2 Verification
+
+`tests/test_discovery_v019.py` (13 offline tests): re-export identity across
+`transport`/`ak820`/`ak820_ctrl`/`cli`, fd/io seam preserved in both
+directions (discovery clean, transport still owns the primitives),
+mock-patch surface (`transport.find_keyboard_hidraw` still steers
+`wait_for_keypress`), fake-sysfs functional parity, missing-base tolerance,
+identity/usage-page helper behavior, <300-line budget, fresh-interpreter
+no-cycle import. Suite: 263 → 278 tests, all green; live `probe` +
+`--dry-run radar` through the `ak820_ctrl` shim on real hardware.
