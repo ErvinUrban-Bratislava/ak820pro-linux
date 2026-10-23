@@ -1144,3 +1144,30 @@ v0.16.0 splits it three ways, all modules comfortably < 300 lines:
 Suite **214/214 → 228/228**; live verification on the attached keyboard:
 `ak820_ctrl.py probe` (rc 0, both hidraw nodes) and `--dry-run card`
 (sha256 digest + chunk count, rc 0) through the unchanged shim.
+
+## 16. Timeout Guards & Bounded I/O (v0.17.0, 2026-10-24)
+
+RELIABILITY iteration: every wait in the protocol path now has a bound, so no
+firmware misbehavior can hang the CLI (or a systemd unit) indefinitely.
+
+| Guard | Location | Failure mode closed |
+|---|---|---|
+| Bounded drain (`DRAIN_MAX_READS = 64`) | `device.drain_data_acks` | a chattering/always-readable data pipe spun the unbounded drain loop forever (CLI + unit hang, no bound) |
+| Whole-transfer deadline (`UPLOAD_BASE_DEADLINE_S + chunks × timeout × CHUNK_DEADLINE_FACTOR`) | `device.stream_payload` (`deadline_s`, injectable `clock`) | a device ACKing every chunk just under the 1 s per-chunk timeout kept an upload alive forever; a breach raises `UploadIncompleteError` (exit 5) *before* SAVE — digest unrecorded, actions retry unchanged |
+| Write-all loop + stall cap (`MAX_WRITE_RETRIES = 64`) | `transport.LinuxHidrawTransport.write_data` | the unchecked `os.write` return silently sent partial chunks (ring-counter desync identical to a dropped packet); a wedged pipe now fails fast with `ProtocolError` (exit 7) |
+
+Design notes:
+
+- **No new exit codes.** The deadline reuses the exit-5 transient-retry contract
+  (§3.4), so `DOCUMENTED_CODES`, the README table, and the shim stay untouched —
+  a timeout is indistinguishable (and handled identically) to a dropped ACK.
+- **Deterministic tests.** `clock` injection keeps every deadline test instant;
+  the suite never sleeps to prove a timeout.
+- FakeTransport gains `flood=True` (chattering pipe). `tests/test_timeout_guards.py`
+  (15 tests) pins the drain cap, the deadline formula (48 s for a 9-chunk payload),
+  abort-before-SAVE, zero-chunk abort on a negative deadline, short-write
+  completion (65 -> 55 -> 25 offer slices), stall/ENODEV/EACCES translation, and
+  both guards through the real `actions.upload_frames_to_screen` pipeline.
+
+Suite **228/228 → 243/243**, zero hardware required; live `probe` (rc 0) and
+`--dry-run card` (rc 0) re-verified through the unchanged shim.

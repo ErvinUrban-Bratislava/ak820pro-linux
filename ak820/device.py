@@ -18,9 +18,12 @@ from .errors import (
 from .protocol import (
     ACK_MAGIC,
     CHUNK_ACK_TIMEOUT_MS,
+    CHUNK_DEADLINE_FACTOR,
     CHUNK_SIZE,
     CMD_DELAY,
+    DRAIN_MAX_READS,
     IMG_CFG_SETUP_DELAY,
+    UPLOAD_BASE_DEADLINE_S,
     _cmd_packet,
     build_payload,
 )
@@ -74,10 +77,20 @@ class AK820Pro:
         return resp
 
     # --- data pipe -----------------------------------------------------------
-    def drain_data_acks(self):
-        """Drain any pending 64-byte ACKs from the data pipe."""
-        while self.transport.read_data(0.01) is not None:
-            pass
+    def drain_data_acks(self, max_reads=DRAIN_MAX_READS):
+        """Drain pending 64-byte ACKs — bounded (v0.17.0).
+
+        A chattering/faulty pipe that is always readable used to spin this
+        loop forever, hanging the CLI (and any systemd unit wrapping it)
+        with no bound. At most `max_reads` reads are performed; returns how
+        many were consumed. Callers treat "pipe quiet" and "cap reached"
+        identically — a still-chattering pipe is a firmware fault, not a
+        reason to wait.
+        """
+        drained = 0
+        while drained < max_reads and self.transport.read_data(0.01) is not None:
+            drained += 1
+        return drained
 
     def send_data_chunk(self, chunk4096, timeout_ms=CHUNK_ACK_TIMEOUT_MS):
         """Write a 4096-byte chunk to Interface 2 and wait for the 64-byte ACK.
@@ -147,7 +160,8 @@ class AK820Pro:
         return (coarse_burst, fine_pkt), acked
 
     # --- high-level operations -------------------------------------------------
-    def upload_frames(self, frames, delays_ms=None, align=True, progress=None):
+    def upload_frames(self, frames, delays_ms=None, align=True, progress=None,
+                      deadline_s=None):
         """Build the payload (D3 guard), align, stream with strict ACK
         accounting (D2/m3), then SAVE. Returns True only on a complete transfer."""
         payload_bytes, num_frames, total_chunks = build_payload(frames, delays_ms)
@@ -160,7 +174,8 @@ class AK820Pro:
                         "Data pipe will not align after 2 attempts — "
                         "check the cable / re-seat the device."
                     )
-        stream_payload(self, payload_bytes, total_chunks, progress=progress)
+        stream_payload(self, payload_bytes, total_chunks, progress=progress,
+                       deadline_s=deadline_s)
         return True
 
     def sync_clock(self, now=None):
@@ -207,7 +222,8 @@ class AK820Pro:
         print("Clock synced successfully!")
 
 
-def stream_payload(dev, payload_bytes, total_chunks, progress=None):
+def stream_payload(dev, payload_bytes, total_chunks, progress=None,
+                   deadline_s=None, clock=time.monotonic):
     """START -> IMAGE_CFG -> per-chunk stream with strict ACK accounting -> SAVE.
 
     Works on any duck-typed device exposing send_feature/handshake/
@@ -215,6 +231,14 @@ def stream_payload(dev, payload_bytes, total_chunks, progress=None):
     Defect D2: never reaches SAVE unless every chunk was ACKed; the caller
     owns digest recording and must skip it when this raises.
     `progress(idx, total, acks)` is an optional UI callback.
+
+    v0.17.0 whole-transfer deadline (§16): a per-chunk timeout alone cannot
+    bound the *total* — a device ACKing every chunk just under 1 s could keep
+    an upload alive forever. The deadline (default: base + per-chunk budget)
+    is checked before each chunk; exceeding it raises the same typed
+    UploadIncompleteError (exit 5) as a dropped ACK, so the actions-level
+    full-retry path applies unchanged and the digest stays unrecorded.
+    `clock` is injectable for deterministic offline tests.
     """
     # Step 1: START (enable=False)
     dev.send_feature(_cmd_packet(0x18, enable=False))
@@ -232,8 +256,20 @@ def stream_payload(dev, payload_bytes, total_chunks, progress=None):
     dev.drain_data_acks()
 
     # Step 3: Stream 4096-byte chunks and strictly await per-chunk ACK
+    if deadline_s is None:
+        deadline_s = UPLOAD_BASE_DEADLINE_S + total_chunks * (
+            CHUNK_ACK_TIMEOUT_MS / 1000.0) * CHUNK_DEADLINE_FACTOR
+    started = clock()
     acks = 0
     for idx in range(total_chunks):
+        if clock() - started > deadline_s:
+            raise UploadIncompleteError(
+                f"Upload deadline exceeded ({deadline_s:.0f}s): only {acks}/"
+                f"{total_chunks} chunks completed. Flash save aborted; payload "
+                "digest not recorded. Retry the upload.",
+                acks=acks,
+                total=total_chunks,
+            )
         chunk = payload_bytes[idx * CHUNK_SIZE:(idx + 1) * CHUNK_SIZE]
         ack = dev.send_data_chunk(chunk, timeout_ms=CHUNK_ACK_TIMEOUT_MS)
         if ack is not None:

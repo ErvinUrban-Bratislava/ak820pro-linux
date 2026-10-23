@@ -21,6 +21,7 @@
 | `v0.14.0` | 2026-10-24 | Done | Ops & Observability (B6/B7 + §6.5): `logging` to stderr + global `--verbose/-v` (stdout reserved for `events list --json`); single templated `playerctl -f '{{status}}\t{{title}}\t{{artist}}\t{{album}}' metadata` call replaces four subprocesses (§4.3); shipped `systemd/ak820-radar.{service,timer}` + `ak820-hud.service` (`Restart=on-failure` pairs with exit 75); global `--dry-run` (render + sha256 digest + chunk count, zero USB, zero state writes) via new `ak820/renderers.py`; `sync_clock` DST fall-back note (§6.5); `wait_for_keypress` stdin-EOF fix — `/dev/null` no longer a false keypress | `python3 -m unittest` 200/200 |
 | `v0.15.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §14): D10 `radar --date <invalid>` traceback → `ConfigError` exit 6 (D4 never covered the `--date` override; live/preview/dry-run all affected) + D11 missing upload file traceback → new `FileMissingError` exit 8 (README table, `DOCUMENTED_CODES`, package/shim re-exports synced); `run` exit-transparency + lint-lane audit observations recorded | `python3 -m unittest` 214/214 + live exit probes |
 | `v0.16.0` | 2026-10-24 | Done | Modular Package Refactoring (REVIEW.md §15): `cli.py` (289 lines, at the §10 budget) split three ways — new `ak820/parser.py` (argparse surface, 104 lines) + new `ak820/handlers.py` (device-bound `(args, dev)` handlers + `DEVICE_HANDLERS` + `run_watch_loop`, 114 lines) + slim 106-line `cli.py` keeping offline routing, `--dry-run`, discovery and the §3.4 exit-code `main()`; every split name re-exported (identity, not copy) so `ak820.cli.*`, `ak820.*` and the `ak820_ctrl` shim are byte-for-byte compatible entry points | `python3 -m unittest` 228/228 + live `probe`/`--dry-run` via shim |
+| `v0.17.0` | 2026-10-24 | Done | Timeout Guards & Bounded I/O (REVIEW.md §16): `drain_data_acks` capped at `DRAIN_MAX_READS` (a chattering pipe can no longer hang the CLI), `stream_payload` whole-transfer deadline (30 s base + 2× per-chunk budget, injectable clock) raising `UploadIncompleteError` exit 5 before SAVE, `LinuxHidrawTransport.write_data` write-all loop with stall cap (short writes completed; wedged pipe -> `ProtocolError` exit 7), FakeTransport `flood` fault | `python3 -m unittest` 243/243 + live `probe`/`--dry-run` via shim |
 
 ---
 
@@ -136,4 +137,21 @@
     `ak820.cli`, `ak820/__init__`, and the `ak820_ctrl` shim are unchanged.
   - New `tests/test_modularity_v016.py` (14 offline tests): re-export identity, shim parity,
     parser↔handler structural parity, <300-line budget, fresh-interpreter import (no cycle).
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [x] **`v0.17.0`** — Timeout Guards & Bounded I/O (§16, RELIABILITY mode):
+  - `drain_data_acks(max_reads=DRAIN_MAX_READS)`: bounded drain — an always-readable
+    (chattering) data pipe can no longer spin the loop forever and hang the CLI or a
+    `Restart=on-failure` systemd unit with no bound.
+  - `stream_payload(..., deadline_s=None, clock=time.monotonic)`: whole-transfer deadline
+    (30 s base + 2× the per-chunk timeout budget) checked before every chunk — a device
+    ACKing just under the 1 s per-chunk timeout can never keep an upload alive indefinitely.
+    A breach raises the same typed `UploadIncompleteError` (exit 5) *before* SAVE, so the
+    digest stays unrecorded and the actions-level full retry applies unchanged.
+  - `LinuxHidrawTransport.write_data`: write-all loop — short writes are completed (a partial
+    chunk desyncs the firmware ring counter exactly like a dropped packet); consecutive
+    zero-progress attempts are capped (`MAX_WRITE_RETRIES`) -> `ProtocolError` (exit 7).
+  - FakeTransport gains a `flood=True` fault modeling the chattering pipe.
+  - New `tests/test_timeout_guards.py` (15 offline tests, zero hardware, injectable clock —
+    no test ever sleeps to prove a timeout).
   - Verify `python3 -m unittest discover -s tests` passes 100%.

@@ -14,7 +14,7 @@ import sys
 from typing import Optional, Protocol, runtime_checkable
 
 from . import protocol
-from .errors import DeviceDisconnectedError, PermissionDeniedError
+from .errors import DeviceDisconnectedError, PermissionDeniedError, ProtocolError
 from .protocol import parse_usage_page
 
 
@@ -86,9 +86,25 @@ class LinuxHidrawTransport:
 
     # --- data pipe (Interface 2, Usage Page 0xFF68) --------------------------
     def write_data(self, payload: bytes) -> None:
-        # Prepend 0x00 so hidraw strips the report ID byte and sends the full payload
+        """Write-all loop (v0.17.0, §16): the 0x00-prefixed payload must land in
+        full — a short write desyncs the firmware ring counter like a dropped
+        packet. Zero-progress attempts are capped so a wedged pipe fails fast.
+        """
+        view = memoryview(b"\x00" + bytes(payload))
+        written = stalls = 0
         try:
-            os.write(self.data_fd, b"\x00" + bytes(payload))
+            while written < len(view):
+                n = os.write(self.data_fd, view[written:])
+                if n <= 0:
+                    stalls += 1
+                    if stalls >= protocol.MAX_WRITE_RETRIES:
+                        raise ProtocolError(
+                            f"data-pipe write stalled: {written}/{len(view)} bytes "
+                            f"accepted after {protocol.MAX_WRITE_RETRIES} attempts."
+                        )
+                    continue
+                written += n
+                stalls = 0
         except OSError as exc:
             raise self._translate(exc, "data-pipe write") from exc
 

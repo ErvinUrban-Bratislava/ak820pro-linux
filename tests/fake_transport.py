@@ -12,7 +12,9 @@ Models the three firmware behaviors FINDINGS.md documents:
       `disconnect_at=N` (the device is "unplugged" after N ring-wrap chunks:
       every subsequent call raises DeviceDisconnectedError — ENODEV model), and
       `ctrl_dead=True` (the control pipe is dead: every get_feature raises
-      OSError(ENODEV) — the §3.6 dead-handshake model).
+      OSError(ENODEV) — the §3.6 dead-handshake model), and
+      `flood=True` (the data pipe is chattering: every read_data answers an
+      ACK — the v0.17.0 bounded-drain model, §16).
 
 v0.13.0 (§3.5): the ring starts DIRTY (`start_idx=37`, nonzero) by default, so
 tests prove the alignment-skip is state-driven (state file says clean), never
@@ -31,7 +33,7 @@ class FakeTransport:
     """Emulates SN32F290: 64-packet sub-counter, per-chunk ACK, injectable faults."""
 
     def __init__(self, drop_ack_at=None, ack_magic=True, drop_once=False, disconnect_at=None,
-                 ctrl_dead=False, start_idx=DIRTY_START_IDX):
+                 ctrl_dead=False, start_idx=DIRTY_START_IDX, flood=False):
         self.sub_packet_idx = start_idx % 64  # firmware [0x2000003A]
         self.chunks_expected = 0
         self.chunks_seen = 0
@@ -45,6 +47,7 @@ class FakeTransport:
         self.disconnect_at = disconnect_at  # "unplug" after N ring-wrap chunks
         self.dead = False
         self.ctrl_dead = ctrl_dead         # control pipe dead (§3.6 model)
+        self.flood = flood                 # chattering pipe: read_data always answers (§16)
 
     def _check_alive(self):
         if self.dead:
@@ -88,6 +91,8 @@ class FakeTransport:
 
     def read_data(self, timeout: float):
         self._check_alive()
+        if self.flood:
+            return ACK  # chattering pipe: always readable (bounded-drain model)
         return self.rx_queue.pop(0) if self.rx_queue else None
 
     def close(self) -> None:

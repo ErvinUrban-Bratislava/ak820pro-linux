@@ -26,6 +26,18 @@ CMD_DELAY = 0.050
 IMG_CFG_SETUP_DELAY = 0.350
 CHUNK_ACK_TIMEOUT_MS = 1000
 
+# v0.17.0 timeout guards (§16): every bounded wait has a bound.
+# A chattering data pipe must not spin drain_data_acks forever, and a device
+# that ACKs just under the per-chunk timeout must not keep an upload alive
+# indefinitely — the whole-transfer deadline is UPLOAD_BASE_DEADLINE_S +
+# total_chunks * (CHUNK_ACK_TIMEOUT_MS/1000) * CHUNK_DEADLINE_FACTOR.
+DRAIN_MAX_READS = 64
+UPLOAD_BASE_DEADLINE_S = 30.0
+CHUNK_DEADLINE_FACTOR = 2.0
+# write-all loop: consecutive zero-progress os.write() attempts tolerated
+# before the data pipe is declared stalled (ProtocolError).
+MAX_WRITE_RETRIES = 64
+
 # Per-chunk ACK on the data pipe starts with this magic (FINDINGS.md).
 ACK_MAGIC = b"\x01\x5A\x02"
 
