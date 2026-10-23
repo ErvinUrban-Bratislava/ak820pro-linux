@@ -44,7 +44,7 @@ class TestFakeTransportFidelity(unittest.TestCase):
     """The simulator is only trustworthy if it models [0x2000003A] correctly."""
 
     def test_ring_wraps_every_64_packets_and_acks_once(self):
-        fake = FakeTransport()
+        fake = FakeTransport(start_idx=0)            # provably-clean power-on model
         fake.write_data(b"\x00" * 64 * 5)
         self.assertEqual(fake.sub_packet_idx, 5)
         self.assertEqual(fake.rx_queue, [])          # mid-chunk: no ACK yet
@@ -102,8 +102,8 @@ class TestUploadProtocol(unittest.TestCase):
         self.assertEqual(seen[-1], (8, 9, 9))
 
     def test_align_data_pipe_locks_subpacket_index(self):
-        fake = FakeTransport()
-        fake.sub_packet_idx = 37                    # arbitrary dirty state
+        fake = FakeTransport()                      # v0.13.0: starts dirty (idx 37)
+        self.assertNotEqual(fake.sub_packet_idx, 0)
         (coarse, fine), acked = AK820Pro(fake).align_data_pipe()
         self.assertTrue(acked)
         self.assertGreater(coarse, 0)

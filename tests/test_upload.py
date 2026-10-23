@@ -9,7 +9,9 @@ acks == total_chunks. Any dropped ACK must raise UploadIncompleteError
 (exit code 5) *before* SAVE, and must never record the payload digest.
 """
 
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -60,6 +62,18 @@ def _cmd_bytes(dev):
 
 class TestUploadIncomplete(unittest.TestCase):
     FRAMES = [b"\xAB" * 100, b"\xCD" * 100]  # header + 200B -> 1 chunk
+
+    def setUp(self):
+        # v0.13.0: upload_frames_to_screen persists the §3.5 pipe flag via
+        # state.mark_pipe — isolate the state file so tests never touch ~/.cache.
+        self._state_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._state_dir.cleanup)
+        env = mock.patch.dict(
+            os.environ,
+            {"AK820_STATE_PATH": os.path.join(self._state_dir.name, "state.json")},
+        )
+        env.start()
+        self.addCleanup(env.stop)
 
     def _upload(self, drop_idxs=()):
         dev = FakeTransport(drop_chunk_idxs=drop_idxs)

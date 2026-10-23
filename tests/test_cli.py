@@ -183,8 +183,11 @@ class TestM12ProgressGating(unittest.TestCase):
 
     def _upload_capture(self, isatty):
         buf = io.StringIO()
-        # redirect first, then patch isatty on the StringIO that is now sys.stdout
-        with mock.patch.object(state, "save_payload_hash"), \
+        # v0.13.0: upload_frames_to_screen now persists the §3.5 pipe flag —
+        # isolate the state file so the suite never touches ~/.cache.
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.dict(os.environ, {"AK820_STATE_PATH": os.path.join(tmp, "state.json")}), \
+             mock.patch.object(state, "save_payload_hash"), \
              contextlib.redirect_stdout(buf), \
              mock.patch.object(sys.stdout, "isatty", return_value=isatty):
             actions.upload_frames_to_screen(self._Dev(), [b"\xAB" * 100], None, label="t", force=True)

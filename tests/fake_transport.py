@@ -13,6 +13,10 @@ Models the three firmware behaviors FINDINGS.md documents:
       every subsequent call raises DeviceDisconnectedError — ENODEV model), and
       `ctrl_dead=True` (the control pipe is dead: every get_feature raises
       OSError(ENODEV) — the §3.6 dead-handshake model).
+
+v0.13.0 (§3.5): the ring starts DIRTY (`start_idx=37`, nonzero) by default, so
+tests prove the alignment-skip is state-driven (state file says clean), never
+unconditional. Pass `start_idx=0` for a provably-clean-power-on model.
 """
 
 import errno
@@ -20,14 +24,15 @@ import errno
 from ak820.errors import DeviceDisconnectedError
 
 ACK = b"\x01\x5A\x02" + b"\x00" * 61
+DIRTY_START_IDX = 37  # arbitrary nonzero [0x2000003A] — a pipe that needs aligning
 
 
 class FakeTransport:
     """Emulates SN32F290: 64-packet sub-counter, per-chunk ACK, injectable faults."""
 
     def __init__(self, drop_ack_at=None, ack_magic=True, drop_once=False, disconnect_at=None,
-                 ctrl_dead=False):
-        self.sub_packet_idx = 0          # firmware [0x2000003A]
+                 ctrl_dead=False, start_idx=DIRTY_START_IDX):
+        self.sub_packet_idx = start_idx % 64  # firmware [0x2000003A]
         self.chunks_expected = 0
         self.chunks_seen = 0
         self.feature_log = []            # every 64-byte feature report received

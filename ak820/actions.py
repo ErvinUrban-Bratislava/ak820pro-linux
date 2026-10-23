@@ -35,19 +35,30 @@ def upload_frames_to_screen(
         print(f"Screen already displays '{label}' (sha256={digest[:10]}...). Skipping USB upload (use --force to override).")
         return False
 
-    print("Aligning USB data pipe sub-packet counter...")
-    aligned_pkts, acked = dev.align_data_pipe()
-    if not acked:
-        # m4: streaming into an un-aligned pipe is the desync state alignment
-        # exists to prevent — retry once, then abort before any chunk is sent.
-        print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets) — retrying alignment once...")
+    # §3.5/§4.1: the previous upload ended fully-ACKed + SAVE'd, so the firmware
+    # sub-packet counter [0x2000003A] is provably 0 (FINDINGS.md §4) — skip the
+    # ~1.6-2 s align_data_pipe entirely. Any failure below (or between runs)
+    # left the flag dirty, so this path is only taken on provably-clean state.
+    if state.pipe_known_clean():
+        print("Pipe known clean from last fully-ACKed SAVE — skipping alignment (~2 s saved).")
+    else:
+        print("Aligning USB data pipe sub-packet counter...")
         aligned_pkts, acked = dev.align_data_pipe()
         if not acked:
-            raise ProtocolError(
-                "Data pipe will not align after 2 attempts — "
-                "check the cable / re-seat the device. Upload aborted."
-            )
-    print(f"  Aligned: flash ACK after {aligned_pkts} packets -> sub-packet counter locked to 0.")
+            # m4: streaming into an un-aligned pipe is the desync state alignment
+            # exists to prevent — retry once, then abort before any chunk is sent.
+            print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets) — retrying alignment once...")
+            aligned_pkts, acked = dev.align_data_pipe()
+            if not acked:
+                raise ProtocolError(
+                    "Data pipe will not align after 2 attempts — "
+                    "check the cable / re-seat the device. Upload aborted."
+                )
+        print(f"  Aligned: flash ACK after {aligned_pkts} packets -> sub-packet counter locked to 0.")
+
+    # §3.5: flip to dirty pessimistically *before* any chunk leaves the host —
+    # a timeout/crash between here and the fully-ACKed SAVE re-aligns next run.
+    state.mark_pipe(False)
 
     print(f"Uploading '{label}' ({num_frames} frame(s), {total_chunks} chunks)...")
 
@@ -81,6 +92,10 @@ def upload_frames_to_screen(
         print()
 
     state.save_payload_hash(digest, label)
+    # §3.5: fully-ACKed + SAVE'd -> sub_packet_idx is provably 0; the next
+    # upload may skip alignment. Reached only on success — every failure path
+    # above propagates with the flag left dirty.
+    state.mark_pipe(True)
     print("Upload and flash save complete!")
     return True
 

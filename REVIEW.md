@@ -474,7 +474,7 @@ Measured on this machine (Ryzen AI MAX+), not estimated:
 
 **Honest conclusion: there is no CPU problem.** The loop is protocol-bound. The four changes worth making, in order of payoff:
 
-### 4.1 Skip redundant alignment (§3.5) — saves ~2 s per repeat upload. Biggest single win.
+### 4.1 Skip redundant alignment (§3.5) — saves ~2 s per repeat upload. Biggest single win. **DONE v0.13.0 (§12).**
 
 ### 4.2 Cache fonts with `functools.lru_cache`
 
@@ -827,7 +827,7 @@ select = ["E", "F", "W", "I", "UP", "B"]   # UP auto-flags the typing.Dict moder
 | B1 | Package split (§2.2) with `ak820_ctrl.py` compat shim; move dedup to `state.py` |
 | B2 | `HidTransport` seam + `FakeTransport` firmware simulator + protocol test suite (§5) |
 | B3 | CI workflow + ruff + mypy; `verify_cmd` registered on the Deck |
-| B4 | Alignment-skip on clean pipe (§3.5, ~2 s/upload saved) |
+| B4 | ~~Alignment-skip on clean pipe (§3.5, ~2 s/upload saved)~~ **DONE v0.13.0 (§12)** |
 | B5 | Shared `render_common` (fonts/`_load_font` lru_cache/screen constants) |
 | B6 | Single `playerctl` call; progress gated on tty; `logging` + `--verbose` |
 | B7 | Ship systemd units; atomic config writes (m6); `--dry-run` flag |
@@ -1027,3 +1027,25 @@ known-clean pipe (~2 s saved per repeat upload — biggest remaining perf win), 
 `--verbose` + single-`playerctl`-call media status (B6), shipped systemd units + `--dry-run`
 flag (B7), optional numpy RGB565 fast path (§4.4), `sync_clock` DST note (§6.5), and the
 `wait_for_keypress` stdin-EOF edge (returns "keypress" instantly when stdin is /dev/null).
+
+---
+
+## 12. v0.13.0 — Alignment-Skip on Known-Clean Pipe (§3.5/§4.1, B4 closed)
+
+Implemented exactly per the §3.5 contract:
+
+- `ak820/state.py`: `pipe_known_clean()` / `mark_pipe(clean)` persist a strict-boolean
+  `pipe_clean` flag in the dedup state file. All reads fail **dirty** (absent/corrupt/
+  truthy-but-not-`True`), and every write is atomic (m6 mkstemp+`os.replace` idiom) with
+  read-modify-write so `mark_pipe` and `save_payload_hash` never clobber each other's fields.
+- `ak820/actions.py`: `upload_frames_to_screen` skips `align_data_pipe` entirely when
+  `pipe_known_clean()` (previous upload fully-ACKed + SAVE'd ⇒ `sub_packet_idx` provably 0,
+  FINDINGS.md §4); flips the flag **dirty before streaming** so any timeout/crash re-aligns
+  next run; marks clean only after the fully-ACKed SAVE. The dedup-skip path leaves the flag
+  untouched (no USB traffic ⇒ pipe state unchanged).
+- `FakeTransport` now **starts dirty** (`start_idx=37`) so tests prove the skip is
+  state-driven, not unconditional; `start_idx=0` models a clean power-on.
+- Measured against `FakeTransport` (sleep-dominated): aligned upload **1.50 s** vs
+  align-skipped **0.75 s** — on real hardware the align probe costs ~1.6–2 s, so the saving
+  scales accordingly. Locked by `tests/test_align_skip.py` (15 offline tests: skip, dirty
+  flip, recovery, dedup interaction, wall-time margin, flag persistence + atomicity).

@@ -82,6 +82,8 @@ from ak820.screen import (  # noqa: F401
 )
 from ak820.state import (  # noqa: F401
     check_and_record_payload_hash,
+    mark_pipe,
+    pipe_known_clean,
     save_payload_hash,
 )
 from ak820.status import run_backlight_demo, set_status_backlight  # noqa: F401

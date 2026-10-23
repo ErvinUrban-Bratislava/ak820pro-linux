@@ -31,7 +31,7 @@ See [`FINDINGS.md`](FINDINGS.md) for the complete USB HID protocol and Sonix `SN
 - **Live PC Hardware HUD (`ak820 hud`)**: Real-time CPU %, RAM usage, CPU/APU temperature, clock, and system uptime on your keyboard screen.
 - **Media "Now Playing" Widget (`ak820 media`)**: Automatically queries `playerctl` or native D-Bus MPRIS to display current track title, artist, and playback status for Spotify, YouTube, VLC, and browsers.
 - **CI / Build Indicator with Keypress Auto-Revert (`ak820 run -- make`)**: Pulses breathing amber while your build or tests run, switches to emerald green on pass (or bright red on failure), and **automatically restores your ambient lighting the instant you touch the keyboard to start typing again**.
-- **TFT Screen & GIF Engine (`ak820 upload`)**: Upload PNG, JPG, or animated GIFs. Automatically resizes, centers, and converts frames into 128×128 RGB565 little-endian format with SPI flash sector alignment.
+- **TFT Screen & GIF Engine (`ak820 upload`)**: Upload PNG, JPG, or animated GIFs. Automatically resizes, centers, and converts frames into 128×128 RGB565 little-endian format with SPI flash sector alignment. Repeat uploads skip the ~2 s data-pipe alignment when the previous transfer ended fully-ACKed (state-tracked, fails safe to full alignment).
 - **Internal RTC Clock Sync (`ak820 sync-clock`)**: Sets the keyboard's internal clock directly from system time via 64-byte HID feature reports.
 - **Milestone Countdown Radar (`ak820 radar`)**: Tracks upcoming birthdays, anniversaries, and personal milestones with high-contrast countdown slides and SHA-256 deduplication.
 - **Ambient Lighting Profiles (`ak820 backlight`)**: Curated ambient presets (`warm-white`, `cyber-cyan`, `single-on`), lighting showcase demo, and custom speeds/colors.
@@ -233,7 +233,7 @@ Since v0.9.0 the implementation lives in the `ak820/` package (every module < 30
 | `ak820/transport.py` | The only fd/IO module: `HidTransport` seam, hidraw discovery, `AK820ProDevice`, keypress wait |
 | `ak820/device.py` | fd-free device logic (`AK820Pro`, `stream_payload`) |
 | `ak820/screen.py` | RGB565 packer, image/GIF fitting, shared render constants + cached fonts |
-| `ak820/state.py` | Payload-hash dedup state (`AK820_STATE_PATH` override for tests) |
+| `ak820/state.py` | Payload-hash dedup + pipe-clean flag driving the §3.5 alignment-skip (`AK820_STATE_PATH` override for tests) |
 | `ak820/actions.py` / `backlight.py` / `status.py` / `config.py` | Command layer (upload, radar, lighting, HUD/media config) |
 | `ak820/cli.py` | Argparse tree, `DEVICE_HANDLERS` dispatch table, exit-code `main()` |
 | `ak820/errors.py` | Error taxonomy + exit-code contract above |
