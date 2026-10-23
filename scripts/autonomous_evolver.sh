@@ -10,7 +10,9 @@ mkdir -p "$LOG_DIR"
 cd "$REPO_DIR"
 
 log() {
-  echo "[$(date -Iseconds)] $*"
+  local msg="[$(date -Iseconds)] $*"
+  echo "$msg"
+  echo "$msg" >> "${REPO_DIR}/state/evolver_main.log"
 }
 
 wait_for_cooldown() {
