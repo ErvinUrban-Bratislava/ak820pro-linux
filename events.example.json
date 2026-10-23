@@ -1,8 +1,9 @@
 {
-  "default_mode": "static",
-  "default_preset": "warm-white",
-  "warn_days": 14,
+  "default_mode": "radar",
+  "default_preset": "bongo",
   "urgent_days": 3,
+  "warn_days": 14,
+  "soon_days": 35,
   "backlight": {
     "idle_preset": "warm-white",
     "idle_mode": 1,

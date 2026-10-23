@@ -202,9 +202,23 @@ def save_events_config(cfg: Dict, config_path: Optional[str] = None):
         json.dump(cfg, f, indent=2)
 
 
+def _threshold(cfg: Dict, key: str, default: int) -> int:
+    """Read an urgency threshold from config (D7), falling back on invalid values."""
+    try:
+        value = int(cfg.get(key, default))
+    except (TypeError, ValueError):
+        return default
+    return value if value >= 0 else default
+
+
 def compute_upcoming_events(cfg: Dict, today: Optional[datetime.date] = None) -> List[Dict]:
     if today is None:
         today = datetime.date.today()
+
+    # D7: honor configurable urgency thresholds (defaults match previous hardcodes)
+    urgent_days = _threshold(cfg, "urgent_days", 3)
+    warn_days = _threshold(cfg, "warn_days", 14)
+    soon_days = _threshold(cfg, "soon_days", 35)
 
     upcoming = []
     for ev in cfg.get("events", []):
@@ -234,11 +248,11 @@ def compute_upcoming_events(cfg: Dict, today: Optional[datetime.date] = None) ->
 
         if days_left == 0:
             theme_key = "today"
-        elif days_left <= 3:
+        elif days_left <= urgent_days:
             theme_key = "urgent"
-        elif days_left <= 14:
+        elif days_left <= warn_days:
             theme_key = "warn"
-        elif days_left <= 35:
+        elif days_left <= soon_days:
             theme_key = "soon"
         else:
             theme_key = "calm"

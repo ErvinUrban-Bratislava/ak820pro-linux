@@ -87,32 +87,44 @@ def _parse_usage_page(rd_path):
     return None
 
 
-def find_hidraw_devices():
-    """Locate the Data pipe (0xFF68) and Control pipe (0xFF13) for the AK820 Pro."""
+def _read_hid_identity(dev_dir):
+    """Parse (vid, pid) from a sysfs device dir's uevent HID_ID line, or None."""
+    try:
+        with open(os.path.join(dev_dir, "uevent")) as f:
+            uevent = f.read()
+    except OSError:
+        return None
+
+    hid_id_line = [l for l in uevent.splitlines() if l.startswith("HID_ID=")]
+    if not hid_id_line:
+        return None
+    parts = hid_id_line[0].split("=")[1].split(":")
+    if len(parts) != 3:
+        return None
+
+    try:
+        return int(parts[1], 16), int(parts[2], 16)
+    except ValueError:
+        return None
+
+
+def find_hidraw_devices(base="/sys/class/hidraw"):
+    """Locate the Data pipe (0xFF68) and Control pipe (0xFF13) for the AK820 Pro.
+
+    `base` is parameterized so tests can point at a fake sysfs tree (D6/B8).
+    """
     tft_dev = None
     ctrl_dev = None
-    hidraw_base = "/sys/class/hidraw"
-    if not os.path.isdir(hidraw_base):
+    if not os.path.isdir(base):
         return None, None
 
-    for entry in sorted(os.listdir(hidraw_base)):
-        dev_dir = os.path.join(hidraw_base, entry, "device")
-        uevent_path = os.path.join(dev_dir, "uevent")
-        try:
-            with open(uevent_path) as f:
-                uevent = f.read()
-        except OSError:
+    for entry in sorted(os.listdir(base)):
+        dev_dir = os.path.join(base, entry, "device")
+        identity = _read_hid_identity(dev_dir)
+        if identity is None:
             continue
 
-        hid_id_line = [l for l in uevent.splitlines() if l.startswith("HID_ID=")]
-        if not hid_id_line:
-            continue
-        parts = hid_id_line[0].split("=")[1].split(":")
-        if len(parts) != 3:
-            continue
-
-        dev_vid = int(parts[1], 16)
-        dev_pid = int(parts[2], 16)
+        dev_vid, dev_pid = identity
         if dev_vid != VID or dev_pid not in PIDS:
             continue
 
@@ -123,6 +135,26 @@ def find_hidraw_devices():
             ctrl_dev = f"/dev/{entry}"
 
     return tft_dev, ctrl_dev
+
+
+def find_keyboard_hidraw(base="/sys/class/hidraw"):
+    """All hidraw nodes belonging to the AK820 Pro's own HID interfaces (D6).
+
+    hidraw numbering follows probe-attach order, not per-device identity:
+    hardcoded /dev/hidrawN paths watch the wrong device once a hub or dongle
+    shifts the numbering. Scanning sysfs by VID/PID keeps discovery stable.
+    """
+    paths = []
+    if not os.path.isdir(base):
+        return paths
+    for entry in sorted(os.listdir(base)):
+        identity = _read_hid_identity(os.path.join(base, entry, "device"))
+        if identity is None:
+            continue
+        dev_vid, dev_pid = identity
+        if dev_vid == VID and dev_pid in PIDS:
+            paths.append(f"/dev/{entry}")
+    return paths
 
 
 class AK820ProDevice:
@@ -669,7 +701,7 @@ def set_backlight(
 
 def wait_for_keypress(timeout: float = None) -> bool:
     """Wait for user input on the AK820 Pro keyboard (keypress or knob event)."""
-    dev_paths = ["/dev/hidraw0", "/dev/hidraw1"]
+    dev_paths = find_keyboard_hidraw()  # D6: dynamic sysfs scan by VID/PID
     fds = []
     for p in dev_paths:
         if os.path.exists(p):
@@ -678,7 +710,7 @@ def wait_for_keypress(timeout: float = None) -> bool:
             except OSError:
                 pass
     if not fds:
-        # Fallback to stdin wait if hidraw0/1 not accessible
+        # Fallback to stdin wait if no AK820 Pro hidraw node is accessible
         r, _, _ = select.select([sys.stdin], [], [], timeout)
         return bool(r)
     try:
