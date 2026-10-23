@@ -234,11 +234,15 @@ def dispatch_backlight(dev, args):
             try:
                 mode_val = parse_mode(args.mode) if args.mode else 1
             except ValueError as exc:
-                sys.exit(f"Error: {exc}")
+                # m16 (v0.21.0): a bad flag value is a usage error — documented
+                # exit 2 (what argparse itself uses), not undocumented exit 1.
+                print(f"Error: {exc}", file=sys.stderr)
+                sys.exit(2)
             try:  # m10: `--color banana` must fail friendly, not with a traceback
                 r, g, b = parse_hex_color(args.color)
             except ValueError as exc:
-                sys.exit(f"Error: {exc}")
+                print(f"Error: {exc}", file=sys.stderr)  # m16: exit 2, see above
+                sys.exit(2)
             set_backlight(
                 dev, mode=mode_val, r=r, g=g, b=b, rainbow=args.rainbow,
                 brightness=args.brightness, speed=args.speed,

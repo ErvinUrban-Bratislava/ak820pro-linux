@@ -9,7 +9,7 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.20.0"  # kept in lockstep with pyproject [project] version
+__version__ = "0.21.0"  # kept in lockstep with pyproject [project] version
 
 from .device import AK820Pro, stream_payload
 from .errors import (

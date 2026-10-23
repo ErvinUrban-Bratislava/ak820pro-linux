@@ -142,13 +142,15 @@ class TestExitCodeContract(unittest.TestCase):
 
     def test_backlight_bad_mode_friendly_nonzero(self):
         # §10.5: main(["backlight","set","--mode","banana"]) -> non-zero + friendly message.
+        # m16 (v0.21.0): a bad flag value is a usage error -> documented exit 2.
+        err = io.StringIO()
         with mock.patch.object(cli, "find_hidraw_devices", return_value=("/dev/x", "/dev/y")), \
              mock.patch.object(cli, "AK820ProDevice") as dev_cls:
             dev_cls.return_value.__enter__.return_value = mock.MagicMock()
-            with self.assertRaises(SystemExit) as ctx:
+            with self.assertRaises(SystemExit) as ctx, contextlib.redirect_stderr(err):
                 cli.main(["backlight", "set", "--mode", "banana"])
-        self.assertNotEqual(ctx.exception.code, 0)
-        self.assertIn("Error:", str(ctx.exception.code))
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("Unknown lighting mode", err.getvalue())
 
 
 class TestWatchLoop(unittest.TestCase):

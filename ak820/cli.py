@@ -10,7 +10,8 @@ Exit-code contract (§3.4, as shipped in `errors.py`): 0 success (incl. dedup
 skip), 2 argparse usage error, 3 device not found, 4 permission denied,
 5 upload incomplete, 6 invalid events config (D4/D5/D10), 7 protocol desync,
 8 input file not found (D11), 9 input file unusable (D12/D14), 75 mid-op
-disconnect (EX_TEMPFAIL, systemd-recoverable).
+disconnect (EX_TEMPFAIL, systemd-recoverable), 130 user interrupt (D18,
+128+SIGINT — friendly line, never a traceback).
 """
 
 import logging
@@ -86,7 +87,8 @@ def main(argv=None) -> int:
     ConfigError (invalid event date or --date override) -> 6,
     DeviceNotFoundError -> 3, PermissionDeniedError -> 4, ProtocolError -> 7,
     FileMissingError -> 8, InvalidFileError -> 9 (D12/D14),
-    DeviceDisconnectedError -> 75, argparse usage -> 2.
+    DeviceDisconnectedError -> 75, argparse usage -> 2,
+    KeyboardInterrupt -> 130 (D18: Ctrl+C, no traceback).
     Returns 0 on success (dedup skip included).
     """
     import milestone_radar as mr
@@ -101,6 +103,14 @@ def main(argv=None) -> int:
     except mr.ConfigError as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(mr.ConfigError.exit_code)
+    except KeyboardInterrupt:
+        # D18 (v0.21.0, §20): Ctrl+C during an upload, a keypress wait, or a
+        # `run` child dumped a raw traceback. The §3.5 pipe flag is already
+        # pessimistically dirty and the digest unrecorded mid-upload, so an
+        # interrupt is always safe to re-run. Exit 130 = 128+SIGINT, the shell
+        # convention — same status Python's default produced, minus the traceback.
+        print("\nInterrupted (Ctrl+C).", file=sys.stderr)
+        sys.exit(130)
     return result or 0
 
 

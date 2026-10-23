@@ -1311,3 +1311,66 @@ counting `stream_payload` patch, and CLI-level exit probes. `FakeTransport`
 gains a `perm_denied=True` fault (missing-udev-rule model). Suite: 278 → 300
 tests, all green; live `probe` + `--dry-run radar` through the `ak820_ctrl`
 shim on real hardware.
+
+## 20. Comprehensive Re-Audit (v0.21.0, 2026-10-24)
+
+Full-codebase audit of the operand/interrupt/retry seams: every CLI path was
+walked for raw tracebacks, undocumented exit codes, and invariant bypasses.
+
+### 20.1 New defects found & closed in v0.21.0
+
+- **D17 — `run <missing-command>` leaked a raw `FileNotFoundError` traceback
+  (exit 1).** `subprocess.run` raises at exec time, outside the §3.4 taxonomy.
+  The command operand is a file operand: absent → `FileMissingError` (8, fix
+  the path), present-but-not-executable → `InvalidFileError` (9, `chmod +x`).
+  Deliberately *not* 4: exit 4 must keep meaning "the device node rejected
+  us" (udev rule) so wrappers keep that distinction on `$?` alone.
+- **D18 — Ctrl+C dumped a raw traceback.** Upload streaming, `wait_for_keypress`,
+  and the `run` child all sit outside any KeyboardInterrupt handler (only the
+  `--watch` loop and the demo had local catches). `main()` now catches
+  `KeyboardInterrupt` → friendly stderr line + exit **130** (128+SIGINT, the
+  shell convention — same status Python's default produced, minus the
+  traceback). Mid-upload an interrupt is always safe to re-run: the §3.5 pipe
+  flag is pessimistically dirty before the first chunk and the digest is only
+  recorded after a fully-ACKed SAVE. The `--watch` loop keeps its local clean
+  stop (exit 0) — that is intentional UX, now regression-locked.
+- **D19 — the exit-5 full retry bypassed the m4 alignment invariant.**
+  `upload_frames_to_screen`'s retry path called `align_data_pipe()` and
+  *discarded* the result, streaming into a provably un-aligned pipe — the
+  exact desync state m4 exists to prevent. Both call sites now share one
+  `_ensure_aligned(dev)` helper (retry once, then `ProtocolError` exit 7);
+  a structural test locks that no call site touches `dev.align_data_pipe`
+  outside the helper.
+
+### 20.2 Minor defects closed
+
+- **m14** — a `run` child killed by signal N exited `(-N) & 0xFF` (247 for
+  SIGKILL); now the shell convention `128+N` (137), extending §14.2's
+  run-exit transparency to signal deaths.
+- **m15** — `run` with no operand exited the undocumented generic 1; now
+  documented usage code 2 (same class as argparse).
+- **m16** — `backlight set --mode/--color <bad>` used `sys.exit(str)` →
+  undocumented 1; now friendly stderr + documented usage code 2. The README
+  Exit Codes table row 2 covers invalid flag values; rows 8/9 cover the `run`
+  operand cases; a new row documents 130.
+
+### 20.3 Accepted designs (recorded, not defects)
+
+- `--dry-run` scopes to *USB* traffic only: offline commands (`events` CRUD,
+  `--save-preview` file writes) still act, matching the flag's help text.
+- Dedup keys on the payload digest, not the label: an identical payload under
+  a new label is correctly skipped — the screen genuinely already shows it.
+- `set_status_backlight`'s unknown-status branch is unreachable from the CLI
+  (argparse `choices` gate) — kept as defense for library callers.
+
+### 20.4 Verification
+
+`tests/test_reaudit_v021.py` (16 offline tests, zero hardware): `run` operand
+typed exits 8/9 incl. CLI end-to-end and the 9-not-4 distinction, signal →
+137 / normal → passthrough, empty operand → 2, KeyboardInterrupt → 130 with
+friendly stderr + watch-loop clean-stop regression, retry-align abort proof
+(stream called exactly once, align called 3×), happy drop-once retry still
+completes end-to-end, structural align-centralization lock, backlight usage
+exits 2. Two pre-existing tests (m10/banana) re-anchored to the new exit 2.
+Suite: 300 → 316 tests, all green; live `probe` (real hardware), `--dry-run
+radar`, and empty-`run` exit-2 probe through the `ak820_ctrl` shim.

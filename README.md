@@ -241,15 +241,16 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | Code | Meaning | Raised as |
 |:---|:---|:---|
 | `0` | Success (includes dedup skip: identical payload already on screen) | — |
-| `2` | Argparse usage error (bad/missing flags) | `argparse` |
+| `2` | Usage error: argparse bad/missing flags, invalid `--mode`/`--color` value, or `run` with no command | `argparse` / `SystemExit(2)` |
 | `3` | Device not found (is the keyboard connected via USB?) | `DeviceNotFoundError` |
 | `4` | Permission denied on the device node — install the udev rule from `udev/` (see Setup) | `PermissionDeniedError` |
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
 | `6` | Invalid events config (malformed event date or corrupt JSON — nothing saved or rendered) | `ConfigError` |
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
-| `8` | Input file not found (`upload <file>` or `--dry-run upload <file>` with a bad path) — user error, retrying will not help | `FileMissingError` |
-| `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — or a `--save-preview` target is an existing directory / non-directory path | `InvalidFileError` |
+| `8` | Input file not found (`upload <file>` / `--dry-run upload <file>` with a bad path, or `run <missing-command>`) — user error, retrying will not help | `FileMissingError` |
+| `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path, or `run <command>` is not executable | `InvalidFileError` |
 | `75` | `EX_TEMPFAIL`: USB device vanished mid-operation — transient, systemd `Restart=on-failure` will re-run the command | `DeviceDisconnectedError` |
+| `130` | Interrupted by user (Ctrl+C / SIGINT) — friendly line, never a traceback; mid-upload nothing was flashed and the digest stays unrecorded, so a re-run re-aligns and retries | `KeyboardInterrupt` |
 
 All driver errors derive from `AK820Error` (`ak820/errors.py`), which carries the exit code as an attribute. A regression test (`tests/test_invariants.py`) fails the build if this table ever drifts from the shipped taxonomy.
 

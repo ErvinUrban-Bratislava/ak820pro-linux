@@ -15,6 +15,7 @@ import time
 
 from .actions import sync_clock, upload_frames_to_screen, upload_to_screen
 from .backlight import dispatch_backlight
+from .errors import FileMissingError, InvalidFileError
 from .renderers import render_card, render_hud, render_media, render_radar
 from .status import set_status_backlight
 
@@ -90,14 +91,34 @@ def cmd_run(args, dev):
     if cmd and cmd[0] == "--":
         cmd = cmd[1:]
     if not cmd:
-        sys.exit("Error: No command specified to run.")
+        # m15 (v0.21.0): a missing operand is a usage error — documented exit 2
+        # (same class as argparse), not the undocumented generic exit 1.
+        print("Error: No command specified to run.", file=sys.stderr)
+        sys.exit(2)
     set_status_backlight(dev, "in-progress", label=args.label)
-    res = subprocess.run(cmd)
+    try:
+        res = subprocess.run(cmd)
+    except FileNotFoundError as exc:
+        # D17 (v0.21.0, §20): `run nonexistent-cmd` leaked a raw
+        # FileNotFoundError traceback (exit 1). The command operand is a file
+        # operand: absent -> FileMissingError (8), fix the path, retry never helps.
+        raise FileMissingError(f"Command not found: {cmd[0]}") from exc
+    except PermissionError as exc:
+        # Present-but-unusable (e.g. no +x bit) -> InvalidFileError (9), the
+        # D12/D14 sibling of 8. Not 4: exit 4 means the *device node* rejected
+        # us (udev rule), and scripts must keep that distinction on `$?`.
+        raise InvalidFileError(
+            f"Command not executable: {cmd[0]} ({exc.strerror or 'permission denied'})"
+        ) from exc
     if res.returncode == 0:
         set_status_backlight(dev, "success", label=args.label, wait_key=not args.no_wait)
     else:
         set_status_backlight(dev, "failed", label=args.label, wait_key=not args.no_wait)
-        sys.exit(res.returncode)
+        # m14 (v0.21.0): a child killed by signal N used to exit with
+        # (-N) & 0xFF (e.g. 247 for SIGKILL). Adopt the shell convention
+        # 128+N so wrappers can tell "killed by SIGKILL" (137) from a plain
+        # exit 247 on `$?` alone (§14.2 run-exit transparency).
+        sys.exit(128 - res.returncode if res.returncode < 0 else res.returncode)
 
 
 DEVICE_HANDLERS = {

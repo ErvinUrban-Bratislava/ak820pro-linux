@@ -17,6 +17,30 @@ from .protocol import MAX_FRAMES, build_payload
 from .screen import image_to_rgb565, load_frames_from_file
 
 
+def _ensure_aligned(dev):
+    """m4 invariant, centralized in v0.21.0 (D19, §20): never stream into an
+    un-aligned pipe — retry once, then abort with ProtocolError (exit 7)
+    before any chunk leaves the host.
+
+    D19: the §3.4 exit-5 full-retry path used to call `align_data_pipe()` and
+    *discard* its result, streaming into a provably un-aligned pipe — the exact
+    desync state alignment exists to prevent. Both call sites now share this
+    one implementation, so the retry can no longer bypass the invariant.
+    """
+    aligned_pkts, acked = dev.align_data_pipe()
+    if not acked:
+        # m4: streaming into an un-aligned pipe is the desync state alignment
+        # exists to prevent — retry once, then abort before any chunk is sent.
+        print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets) — retrying alignment once...")
+        aligned_pkts, acked = dev.align_data_pipe()
+        if not acked:
+            raise ProtocolError(
+                "Data pipe will not align after 2 attempts — "
+                "check the cable / re-seat the device. Upload aborted."
+            )
+    print(f"  Aligned: flash ACK after {aligned_pkts} packets -> sub-packet counter locked to 0.")
+
+
 def upload_frames_to_screen(
     dev,
     frames: list,
@@ -45,18 +69,7 @@ def upload_frames_to_screen(
         print("Pipe known clean from last fully-ACKed SAVE — skipping alignment (~2 s saved).")
     else:
         print("Aligning USB data pipe sub-packet counter...")
-        aligned_pkts, acked = dev.align_data_pipe()
-        if not acked:
-            # m4: streaming into an un-aligned pipe is the desync state alignment
-            # exists to prevent — retry once, then abort before any chunk is sent.
-            print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets) — retrying alignment once...")
-            aligned_pkts, acked = dev.align_data_pipe()
-            if not acked:
-                raise ProtocolError(
-                    "Data pipe will not align after 2 attempts — "
-                    "check the cable / re-seat the device. Upload aborted."
-                )
-        print(f"  Aligned: flash ACK after {aligned_pkts} packets -> sub-packet counter locked to 0.")
+        _ensure_aligned(dev)
 
     # §3.5: flip to dirty pessimistically *before* any chunk leaves the host —
     # a timeout/crash between here and the fully-ACKed SAVE re-aligns next run.
@@ -84,7 +97,9 @@ def upload_frames_to_screen(
             # the digest is only recorded after a fully-ACKed SAVE, so a retry
             # can never double-flash or skip a payload that never landed.
             print("\n  Upload incomplete — re-aligning and retrying the full transfer once...")
-            dev.align_data_pipe()
+            # D19: the retry align is now guarded too — if the pipe will not
+            # align, abort with ProtocolError (7) instead of streaming into it.
+            _ensure_aligned(dev)
             stream_payload(dev, payload_bytes, total_chunks, progress=progress)
     except UploadIncompleteError:
         if progress is not None:

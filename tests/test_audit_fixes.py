@@ -132,9 +132,12 @@ class TestMinorDefectClosures(unittest.TestCase):
     def test_m10_bad_color_friendly_exit(self):
         dev = AK820Pro(FakeTransport())
         args = cli.build_parser().parse_args(["backlight", "set", "--color", "banana"])
-        with self.assertRaises(SystemExit) as ctx, redirect_stderr(io.StringIO()):
+        # m16 (v0.21.0): bad flag value -> documented usage-error exit 2, message on stderr.
+        err = io.StringIO()
+        with self.assertRaises(SystemExit) as ctx, redirect_stderr(err):
             dispatch_backlight(dev, args)
-        self.assertIn("Invalid hex color", str(ctx.exception))
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertIn("Invalid hex color", err.getvalue())
 
     def test_m11_pids_match_udev_rule(self):
         rules = (ROOT / "udev" / "70-ajazz-ak820pro.rules").read_text(encoding="utf-8")
