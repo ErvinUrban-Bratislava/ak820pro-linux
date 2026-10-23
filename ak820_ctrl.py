@@ -464,6 +464,36 @@ LIGHT_MODES = {
     "shuttle": 19,
 }
 
+MAX_LIGHT_MODE = max(LIGHT_MODES.values())
+
+
+def parse_mode(value: str) -> int:
+    """Resolve a lighting mode spec (name or number) to an int in 0..19.
+
+    Mode names are matched case-insensitively; numeric values are validated
+    against the firmware range 0..MAX_LIGHT_MODE. Raises ValueError with a
+    friendly message for unknown names or out-of-range numbers (Defect D1:
+    the old eager `int(args.mode)` default crashed on any mode name).
+    """
+    if value is None:
+        raise ValueError("No lighting mode given.")
+    text = str(value).strip()
+    if not text:
+        raise ValueError("No lighting mode given.")
+    key = text.lower()
+    if key in LIGHT_MODES:
+        return LIGHT_MODES[key]
+    try:
+        num = int(text)
+    except ValueError:
+        raise ValueError(
+            f"Unknown lighting mode {value!r}. Use a mode name "
+            f"({', '.join(LIGHT_MODES)}) or an integer 0..{MAX_LIGHT_MODE}."
+        ) from None
+    if not 0 <= num <= MAX_LIGHT_MODE:
+        raise ValueError(f"Lighting mode {num} is out of range 0..{MAX_LIGHT_MODE}.")
+    return num
+
 SHOWCASE_PRESETS = [
     {
         "key": "warm-white",
@@ -1079,7 +1109,10 @@ def main():
                         )
                     print(f"Applied preset '{p['name']}' (`{p['key']}`).")
                 else:
-                    mode_val = LIGHT_MODES.get(args.mode.lower(), int(args.mode)) if args.mode else 1
+                    try:
+                        mode_val = parse_mode(args.mode) if args.mode else 1
+                    except ValueError as exc:
+                        sys.exit(f"Error: {exc}")
                     r, g, b = parse_hex_color(args.color)
                     set_backlight(
                         dev,
