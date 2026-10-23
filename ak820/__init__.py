@@ -9,13 +9,14 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.9.0"
+__version__ = "0.18.0"  # kept in lockstep with pyproject [project] version
 
 from .device import AK820Pro, stream_payload
 from .errors import (
     AK820Error,
     DeviceDisconnectedError,
     FileMissingError,
+    InvalidFileError,
     PermissionDeniedError,
     ProtocolError,
     UploadIncompleteError,
@@ -97,6 +98,7 @@ __all__ = [
     "AK820ProDevice",
     "DeviceNotFoundError",
     "FileMissingError",
+    "InvalidFileError",
     "SHOWCASE_PRESETS",
     "apply_idle_backlight",
     "build_parser",

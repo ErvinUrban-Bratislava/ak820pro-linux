@@ -1110,8 +1110,7 @@ findings below.
 
 - Optional numpy RGB565 fast path (§4.4) with byte-identical output test.
 - `ruff` + `mypy` gate once the tools are installed (B3 remainder).
-- `events remove <target>` exits 0 when nothing matched — consider a friendly
-  non-zero path (minor UX; no data risk).
+- ~~`events remove <target>` exits 0 when nothing matched~~ **DONE v0.18.0 (§17, D13)**.
 
 ---
 
@@ -1171,3 +1170,47 @@ Design notes:
 
 Suite **228/228 → 243/243**, zero hardware required; live `probe` (rc 0) and
 `--dry-run card` (rc 0) re-verified through the unchanged shim.
+
+## 17. Comprehensive Re-Audit (v0.18.0, 2026-10-24)
+
+Full architectural audit of the 15-module `ak820/` package (largest
+`transport.py` at 299 lines — all < 300). Every previously closed area
+(dependency rule §10.2, error taxonomy §3.4, timeout guards §16, dedup/pipe
+state machine §3.5, cli split §15) re-verified clean. The audit swept every
+CLI-reachable path for raw-traceback leaks and silent-success anti-patterns;
+three new defects found, all reproduced live before fixing. Suite
+**243/243 → 263/263**.
+
+### 17.1 New defects found & closed in v0.18.0
+
+| # | Finding | Evidence | Fix |
+|---|---|---|---|
+| **D12** | `upload notes.txt`, `upload <directory>`, and corrupt/truncated images leaked raw PIL/OSError tracebacks (`UnidentifiedImageError`, `IsADirectoryError`, `OSError: image file is truncated`) with exit 1 — live and `--dry-run` paths both affected | `screen.load_frames_from_file` via `actions.upload_to_screen` / `renderers.render_upload` | New `InvalidFileError` → exit **9** (present-but-unusable sibling of D11's exit-8 *absent*): shared `actions.load_frames_guarded` translates loader-domain failures once, so live and dry-run fail identically; README table, `DOCUMENTED_CODES`, package + shim re-exports synced in the same commit |
+| **D13** | `events remove <no-match>` printed "Removed 0 event(s)." and exited **0** — a typo looked like success, and the config file was rewritten atomically for nothing (queued Tier C item now closed) | `config.cmd_events` remove branch | No-match raises `ConfigError` (exit 6) with a "check `events list`" hint and the file is left byte-identical; matching remove (by id or case-insensitive title) unchanged |
+| **D14** | `hud/media --save-preview <path>` into a missing parent dir leaked `FileNotFoundError`; `radar --save-preview <existing-file>` leaked `FileExistsError`; a directory as a file target leaked PIL's `IsADirectoryError` | `config.cmd_hud_preview` / `cmd_media_preview` / `cmd_radar_preview` | Missing parents auto-created (mirrors radar's directory semantics); unusable targets (existing dir as file target, existing file as dir target) raise `InvalidFileError` (exit 9) |
+| **m13** | Version drift: `ak820.__version__` said `0.9.0` while `pyproject.toml` said `1.0.0` — neither matched the `v0.17.0` tag series | `__init__.py`, `pyproject.toml` | Both set to `0.18.0`; `TestVersionSync` locks them equal forever |
+
+### 17.2 Audit observations (accepted designs, no code change)
+
+- **Guard placement in `actions.py`, not `screen.py`**: file-operand errors are
+  a CLI-contract concern, not an imaging one — D11's `FileMissingError` already
+  lives in the actions layer, so D12's translation belongs beside it and
+  `screen.py` stays a pure PIL domain. One shared `load_frames_guarded` keeps
+  the translation single-sourced for both call sites; `renderers` already
+  imports `actions`, so no cycle is introduced.
+- **Exit-9 taxonomy choice**: 9 deliberately neighbors 8 so wrappers read
+  `case $? in 8|9) fix the path;;` — absent vs unusable are distinguishable
+  when it matters, unified when it doesn't. No existing code renumbered.
+- `backlight` with no sub-action still applies default lighting (action
+  defaults to `set` with mode 1) — pre-existing documented behavior, left as
+  is; argparse `choices` guard `--preset`/`--mode`/`--color` paths (m10).
+- `widgets` subprocess probes (playerctl, sensors) all fail soft inside
+  `except Exception` with placeholder values — verified intentional (§8 spirit:
+  HUD must render with no media server).
+
+### 17.3 Remaining backlog (queued Tier C)
+
+- Optional numpy RGB565 fast path (§4.4) with byte-identical output test.
+- `ruff` + `mypy` gate once the tools are installed (B3 remainder).
+- `probe --json` for AI-tool consumption (matches `events list --json`).
+- Events-config schema validation (`jsonschema`) if the file grows more knobs.

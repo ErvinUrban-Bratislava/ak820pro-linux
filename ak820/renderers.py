@@ -9,10 +9,10 @@ per the §10.2 dependency rule; this module never touches protocol/transport.
 
 import os
 
-from .actions import build_radar_frames
+from .actions import build_radar_frames, load_frames_guarded
 from .config import today_from_args
 from .errors import FileMissingError
-from .screen import image_to_rgb565, load_frames_from_file
+from .screen import image_to_rgb565
 
 
 def render_upload(args):
@@ -20,7 +20,7 @@ def render_upload(args):
     if not os.path.exists(args.file):
         # D11 (v0.15.0): typed error -> exit 8, never a raw traceback.
         raise FileMissingError(f"File not found: {args.file}")
-    frames, delays = load_frames_from_file(args.file, fit_mode=args.fit)
+    frames, delays = load_frames_guarded(args.file, fit_mode=args.fit)
     return frames, delays, os.path.basename(args.file)
 
 

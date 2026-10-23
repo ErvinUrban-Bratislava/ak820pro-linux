@@ -9,8 +9,8 @@ exit-code contract, and re-exports both split modules' public names so
 Exit-code contract (§3.4, as shipped in `errors.py`): 0 success (incl. dedup
 skip), 2 argparse usage error, 3 device not found, 4 permission denied,
 5 upload incomplete, 6 invalid events config (D4/D5/D10), 7 protocol desync,
-8 input file not found (D11), 75 mid-op disconnect (EX_TEMPFAIL,
-systemd-recoverable).
+8 input file not found (D11), 9 input file unusable (D12/D14), 75 mid-op
+disconnect (EX_TEMPFAIL, systemd-recoverable).
 """
 
 import logging
@@ -84,7 +84,8 @@ def main(argv=None) -> int:
     Exit-code contract (§3.4 + D4/D5/D8/D10/D11): UploadIncompleteError -> 5,
     ConfigError (invalid event date or --date override) -> 6,
     DeviceNotFoundError -> 3, PermissionDeniedError -> 4, ProtocolError -> 7,
-    FileMissingError -> 8, DeviceDisconnectedError -> 75, argparse usage -> 2.
+    FileMissingError -> 8, InvalidFileError -> 9 (D12/D14),
+    DeviceDisconnectedError -> 75, argparse usage -> 2.
     Returns 0 on success (dedup skip included).
     """
     import milestone_radar as mr

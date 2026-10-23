@@ -71,6 +71,19 @@ class FileMissingError(AK820Error):
     exit_code = 8
 
 
+class InvalidFileError(AK820Error):
+    """The file operand exists but cannot be used (Defect D12/D14, v0.18.0).
+
+    Sibling of FileMissingError (exit 8 = *absent*): here the path is present
+    but unusable — `upload notes.txt` (not an image), `upload <directory>`,
+    a corrupt/truncated image, or a `--save-preview` target that is an
+    existing directory. Used to leak raw PIL / OSError tracebacks (exit 1).
+    Exit 9: same user-error class as 8 — fix the path, retrying never helps.
+    """
+
+    exit_code = 9
+
+
 class UploadIncompleteError(AK820Error):
     """Raised when the device fails to ACK every 4096-byte data chunk (Defect D2).
 

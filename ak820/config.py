@@ -8,6 +8,8 @@ import datetime
 import json
 import os
 
+from .errors import InvalidFileError
+
 
 def today_from_args(args):
     """--date override (YYYY-MM-DD) or the real today.
@@ -71,10 +73,34 @@ def cmd_events(args):
             e for e in cfg.get("events", [])
             if e.get("id") != args.target and e.get("title", "").lower() != args.target.lower()
         ]
+        if len(cfg["events"]) == before:
+            # D13 (v0.18.0): a no-match remove used to print "Removed 0 event(s)."
+            # and exit 0 — a typo looked like success, and the config file was
+            # rewritten for nothing. Fail friendly (exit 6) and leave the file alone.
+            raise mr.ConfigError(
+                f"No event with id or title matching {args.target!r} — "
+                "check `ak820 events list`."
+            )
         mr.save_events_config(cfg, cfg_path)
         print(f"Removed {before - len(cfg['events'])} event(s).")
         return 0
     return 0
+
+
+def _prepare_preview_file(path: str) -> str:
+    """D14 (v0.18.0): `--save-preview FILE` targets must be writable file paths.
+
+    Missing parent directories are created (mirroring `radar --save-preview`'s
+    directory semantics — `hud --save-preview out/hud.png` used to leak a raw
+    FileNotFoundError); an existing directory passed as a file target becomes
+    the typed InvalidFileError (exit 9) instead of PIL's IsADirectoryError.
+    """
+    if os.path.isdir(path):
+        raise InvalidFileError(
+            f"Preview target {path!r} is a directory — give a file path (e.g. {path}/hud.png)."
+        )
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    return path
 
 
 def cmd_radar_preview(args):
@@ -84,7 +110,16 @@ def cmd_radar_preview(args):
     today = today_from_args(args)
     cfg = mr.load_events_config(getattr(args, "config", None))
     upcoming = mr.compute_upcoming_events(cfg, today=today)
-    os.makedirs(args.save_preview, exist_ok=True)
+    try:
+        os.makedirs(args.save_preview, exist_ok=True)
+    except (FileExistsError, NotADirectoryError) as exc:
+        # D14b (v0.18.0): `radar --save-preview <existing-file>` used to leak a
+        # raw FileExistsError — a preview target that exists but is not a
+        # directory is the same unusable-path class as D12 (exit 9).
+        raise InvalidFileError(
+            f"Preview target {args.save_preview!r} is not a usable directory — "
+            "a file already exists at that path."
+        ) from exc
     p1 = os.path.join(args.save_preview, "radar_hero.png")
     p2 = os.path.join(args.save_preview, "radar_board.png")
     mr.render_hero_card(upcoming, today=today).save(p1)
@@ -97,7 +132,7 @@ def cmd_hud_preview(args):
     import widgets
 
     img = widgets.render_hud_card()
-    img.save(args.save_preview)
+    img.save(_prepare_preview_file(args.save_preview))
     print(f"Saved HUD preview to {args.save_preview}")
     return 0
 
@@ -106,6 +141,6 @@ def cmd_media_preview(args):
     import widgets
 
     img = widgets.render_media_card()
-    img.save(args.save_preview)
+    img.save(_prepare_preview_file(args.save_preview))
     print(f"Saved media preview to {args.save_preview}")
     return 0

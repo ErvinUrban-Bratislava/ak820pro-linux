@@ -7,11 +7,12 @@ Depends only on {protocol, device, screen, state, errors} + milestone_radar
 
 import hashlib
 import os
+import struct
 import sys
 
 from . import state
 from .device import stream_payload
-from .errors import FileMissingError, ProtocolError, UploadIncompleteError
+from .errors import FileMissingError, InvalidFileError, ProtocolError, UploadIncompleteError
 from .protocol import MAX_FRAMES, build_payload
 from .screen import image_to_rgb565, load_frames_from_file
 
@@ -101,12 +102,31 @@ def upload_frames_to_screen(
     return True
 
 
+def load_frames_guarded(path: str, fit_mode: str = "fill"):
+    """D12 (v0.18.0): `upload notes.txt` / `upload <dir>` / a corrupt image used
+    to leak a raw PIL `UnidentifiedImageError`, `IsADirectoryError`, or
+    `OSError: image file is truncated` traceback (exit 1). Loader-domain
+    failures become the typed `InvalidFileError` (exit 9) — same user-error
+    class as D11's exit 8: fix the path, retrying never helps.
+
+    Lives here (not in screen.py, at the §10 line budget) and is shared by
+    `upload_to_screen` and `renderers.render_upload`, so live and `--dry-run`
+    paths fail identically.
+    """
+    try:
+        return load_frames_from_file(path, fit_mode=fit_mode)
+    except InvalidFileError:
+        raise
+    except (OSError, ValueError, SyntaxError, struct.error) as exc:
+        raise InvalidFileError(f"Cannot load {path!r} as an image: {exc}") from exc
+
+
 def upload_to_screen(dev, file_path: str, fit_mode: str = "fill", force: bool = True):
     """Load an image or GIF from disk and upload it to the TFT display."""
     if not os.path.exists(file_path):
         # D11 (v0.15.0): typed error -> exit 8, never a raw traceback.
         raise FileMissingError(f"File not found: {file_path}")
-    frames, delays = load_frames_from_file(file_path, fit_mode=fit_mode)
+    frames, delays = load_frames_guarded(file_path, fit_mode=fit_mode)
     return upload_frames_to_screen(dev, frames, delays, label=os.path.basename(file_path), force=force)
 
 
