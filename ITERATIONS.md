@@ -10,6 +10,7 @@
 | `v0.3.0` | 2026-10-23 | Done | Fix D3: `MAX_FRAMES = 255` guard — `upload_frames_to_screen` rejects >255 frames before any USB packet; hybrid radar frame total clamped (no silent & 0xFF wrap) | `python3 -m unittest` 25/25 |
 | `v0.4.0` | 2026-10-23 | Done | Fix D4/D5: `parse_event_date()` validates at `events add` (exit 6 `ConfigError`); `_safe_date()` falls back to Feb 28 only for (2,29) on non-leap years, rejects all other invalid components | `python3 -m unittest` 50/50 |
 | `v0.5.0` | 2026-10-23 | Done | Fix D6/D7: `wait_for_keypress()` uses dynamic sysfs VID/PID scan (`find_keyboard_hidraw`, `base=` testable); `compute_upcoming_events()` honors `urgent_days`/`warn_days`/`soon_days` config thresholds; example config aligned | `python3 -m unittest` 61/61 |
+| `v0.6.0` | 2026-10-23 | Done | Autonomous re-audit: REVIEW.md §9 defect resolution audit — all 7 defects (D1–D7) live-verified RESOLVED; REVIEW.md §10 detailed Phase 2 architecture spec (`ak820/` package, `protocol`/`transport`/`device`/`screen`/`state`/`cli`, dependency rules, per-phase DoD, <300-line modules) | `python3 -m unittest` 61/61 + live probes |
 
 ---
 
@@ -47,7 +48,7 @@
   - Add unit tests verifying sysfs discovery and config parsing.
   - Verify `python3 -m unittest discover -s tests` passes 100%.
 
-- [ ] **`v0.6.0`** — Autonomous Re-Audit & Verification Gate:
+- [x] **`v0.6.0`** — Autonomous Re-Audit & Verification Gate:
   - Re-run deep review against the updated codebase.
   - Update `REVIEW.md` to reflect that all 7 confirmed defects (D1 through D7) are resolved.
   - Formulate detailed architecture specs for Phase 2 (modular package refactoring).

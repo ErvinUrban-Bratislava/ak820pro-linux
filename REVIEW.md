@@ -1,5 +1,10 @@
 # Deep Architectural & Code Review — ak820pro-linux
 
+> **STATUS UPDATE (v0.6.0 re-audit, 2026-10-23):** All **7 confirmed defects (D1–D7) are RESOLVED** and
+> regression-tested. See §9 for the per-defect audit trail and §10 for the detailed Phase 2 modular
+> package architecture spec. Original review content below is preserved as the historical record;
+> live state at re-audit: `python3 -m unittest discover -s tests` → **61/61 OK**.
+
 **Branch:** `ErvinUrban-Bratislava/project-review` @ `d2afd4c`
 **Date:** 2026-10-23
 **Scope:** `ak820_ctrl.py` (1,127 LOC), `milestone_radar.py`, `widgets.py`, `tests/test_ak820.py`, `udev/70-ajazz-ak820pro.rules`, `pyproject.toml`, README/FINDINGS.
@@ -850,3 +855,136 @@ To keep this review balanced — these are deliberate, correct designs worth pre
 ---
 
 *Review performed against the live worktree; all defect reproductions and measurements were executed on this machine (keyboard attached, `0c45:800A`). Test suite state at review time: 8/8 passing.*
+
+---
+
+## 9. Defect Resolution Audit (v0.6.0 re-audit, 2026-10-23)
+
+Re-verified by live execution against the current worktree (`ak820_ctrl.py` 1,250 LOC,
+`milestone_radar.py` 491 LOC, `widgets.py` 379 LOC) plus the regression suite
+(**61/61 passing**). Every defect below was probed live, not just grep-confirmed.
+
+| # | Defect | Fixed in | Live verification at re-audit | Status |
+|---|---|---|---|---|
+| D1 | `backlight set --mode <name>` eager-`int()` crash | `v0.1.0` | `parse_mode("breath")→7`, `parse_mode("13")→13`; `parse_mode("banana")` raises `ValueError` with the full mode-name list, caught at the CLI call site (`ak820_ctrl.py:1186`) → friendly error, no traceback | **RESOLVED** |
+| D2 | False "complete!" on dropped chunk ACKs | `v0.2.0` | `UploadIncompleteError` (exit 5) raised when `acks != total_chunks`; digest recorded only on full transfer; `tests/test_upload.py` | **RESOLVED** |
+| D3 | Silent `& 0xFF` wrap past 255 frames | `v0.3.0` | `MAX_FRAMES = 255` (`ak820_ctrl.py:41`) enforced in `upload_frames_to_screen` before any USB packet; hybrid radar frame total clamped; `tests/test_frame_limit.py` | **RESOLVED** |
+| D4 | Malformed event dates → raw traceback | `v0.4.0` | `parse_event_date("not-a-date")` and `("2020-13-45")` raise `ConfigError` (exit 6) at `events add` time; `tests/test_radar.py` | **RESOLVED** |
+| D5 | Feb-29 fallback crashed on any invalid component | `v0.4.0` | `_safe_date()` clamps (2,29)→Feb 28 **only** on non-leap years (`parse_event_date("2026-02-29")` correctly rejected — 2026 is not a leap year; `("2028-02-29")→(2028,2,29)` accepted); `("03-15")→(None,3,15)` | **RESOLVED** |
+| D6 | Hardcoded `/dev/hidraw0/1` in `wait_for_keypress` | `v0.5.0` | `find_keyboard_hidraw(base="/sys/class/hidraw")` dynamic sysfs VID/PID scan (`ak820_ctrl.py:140`), `base=` parameterized for fake-sysfs tests; `tests/test_hidraw.py` | **RESOLVED** |
+| D7 | Dead config keys (`warn_days`/`urgent_days`) | `v0.5.0` | `compute_upcoming_events` honors `urgent_days`/`warn_days`/`soon_days` via `_threshold()` with safe fallbacks (3/14/35); `events.example.json` aligned with code defaults; `tests/test_config_thresholds.py` | **RESOLVED** |
+
+**Re-audit verdict:** Tier A defect lane (§7 A1–A4, A7) is fully closed. Remaining open work is
+structural (Tier B): the monolith split (§2.1), the transport seam (§5.2), and the minor-defect table
+(m1–m12), which Phase 2 (§10) now subsumes into concrete per-version deliverables.
+
+---
+
+## 10. Phase 2 Architecture Spec — Modular Package Refactoring (`ak820/`)
+
+Detailed, implementation-ready spec for queue items **v0.7.0 → v0.9.0** (with v0.10.0 CI gate).
+Hard constraints for every phase: each new module **< 300 lines**; `ak820_ctrl.py` keeps **every
+existing public name importable** (backward-compat shim); `python3 -m unittest discover -s tests`
+stays 100 % green at every tag.
+
+### 10.1 Target package layout (supersedes §2.2 — package name is `ak820/`)
+
+```text
+ak820/
+├── __init__.py        # __version__ = "0.9.0"; re-export public API          (~20 LOC)
+├── errors.py          # AK820Error taxonomy + exit codes (§3.4)              (~40 LOC)
+├── protocol.py        # v0.7.0: VID/PIDS, ioctl constants, _cmd_packet,
+│                      #   ACK_MAGIC, MAX_FRAMES, _build_gif_header,
+│                      #   parse_mode, parse_hex_color                        (~180 LOC)
+├── transport.py       # v0.7.0: HidTransport Protocol + LinuxHidrawTransport
+│                      #   (errno→error translation, §3.3) + sysfs discovery
+│                      #   (find_hidraw_devices(base=), find_keyboard_hidraw)  (~220 LOC)
+├── device.py          # v0.7.0: AK820Pro pure state machine over a transport:
+│                      #   handshake (failure counting, §3.6), send_data_chunk
+│                      #   (ACK-magic validation m3), align_data_pipe,
+│                      #   upload_frames_to_screen (D2/D3 guards), sync_clock  (~280 LOC)
+├── screen.py          # v0.8.0: image_to_rgb565 (optimized packing), fit_image
+│                      #   (m9 alpha-mask fix), load_frames_from_file,
+│                      #   frame/delay buffer allocation, display layout       (~260 LOC)
+├── state.py           # v0.8.0: payload-hash dedup store moved out of
+│                      #   milestone_radar (fixes §2.1 layering inversion);
+│                      #   AK820_STATE_PATH env override                      (~80 LOC)
+├── cli.py             # v0.9.0: build_parser() + HANDLERS dispatch table (§2.3),
+│                      #   one ≤40-line handler per subcommand, exit-code
+│                      #   mapping main() (§3.4)                              (~290 LOC)
+ak820_ctrl.py          # v0.9.0 compat shim: `from ak820.cli import main`,
+                       #   re-export every public name (`# noqa: F401`)       (~60 LOC)
+```
+
+`milestone_radar.py` and `widgets.py` stay top-level in Phase 2 (rendering domain, device-free
+already); their duplicated constants (m8) move into `ak820/screen.py` as `render_common` symbols.
+
+### 10.2 Dependency rule (acyclic; enforce with a CI grep)
+
+```text
+cli       → {device, screen, state, protocol, errors} + {milestone_radar, widgets}
+device    → {transport, protocol, errors}
+transport → {protocol, errors}
+screen    → {protocol, errors}          # imaging only — NEVER device/transport
+state     → {errors}
+milestone_radar, widgets → {screen}     # rendering only
+FORBIDDEN: any ak820.* import of hidraw/ioctl/select outside transport.py;
+           any function-level `import milestone_radar` inside protocol/device paths.
+```
+
+CI check (v0.10.0): `grep -rn "import milestone_radar" ak820/device.py ak820/protocol.py` must be
+empty; `grep -rn "fcntl\|hidraw\|select" ak820/ --include='*.py' | grep -v transport.py` must be empty.
+
+### 10.3 v0.7.0 — `protocol.py` + `transport.py` + `FakeTransport` (the testability seam)
+
+1. Extract constants and pure framing helpers into `protocol.py`; `ak820_ctrl.py` re-imports them
+   (shim semantics preserved).
+2. Define the seam exactly as §5.2: `HidTransport` `Protocol` with
+   `set_feature/get_feature/write_data/read_data`; `LinuxHidrawTransport` wraps real fds and does
+   the errno→`DeviceDisconnectedError`/`PermissionDeniedError` translation (§3.3) — this also closes
+   m1 (`__enter__` fd leak) and m2 (observable handshake).
+3. `AK820Pro` becomes the fd-free state machine; `AK820ProDevice` stays as a thin factory
+   (`AK820Pro(LinuxHidrawTransport(open_fds))`) so existing callers are untouched.
+4. `tests/fake_transport.py`: firmware simulator per §5.3 — **must** model (a) the 64-packet
+   sub-packet ring counter `[0x2000003A]`, (b) per-4096-byte-chunk ACK with `01 5A 02` magic,
+   (c) injectable `drop_ack_at` and `ack_magic=False` fault knobs.
+5. New offline suite `tests/test_protocol.py` implementing every §5.4 case (stream-all-chunks,
+   D2 missing-ACK, m3 bad-magic, D3 over-limit, sync-clock byte sequence, align locks sub-index,
+   D1 parse_mode) — zero hardware required.
+
+### 10.4 v0.8.0 — `screen.py` + RGB565 pipeline + `state.py`
+
+1. Move `image_to_rgb565`, `fit_image`, `load_frames_from_file`, `_build_gif_header` consumers,
+   and screen layout constants into `screen.py`; adopt §4.2 `lru_cache` fonts and §4.5
+   `memoryview` hashing (no `bytes(payload)` copy); fix m9 (`paste(..., copy)` alpha mask).
+2. Optimize RGB565 packing: per-row `bytes` comprehension over `img.tobytes()` instead of the
+   per-pixel `getpixel` double loop; keep output **byte-identical** (regression test compares
+   old-vs-new on fixed fixtures, §4.4 equivalence identities).
+3. Move dedup (`check_and_record_payload_hash`, `save_payload_hash`) from `milestone_radar.py`
+   into `state.py` with `AK820_STATE_PATH` env override — kills the §2.1 layering inversion and
+   makes dedup testable.
+4. Tests: RGB565 byte-exactness on a Pillow-generated gradient, `fit_image` sizes for all three
+   modes, GIF round-trip (Pillow-written 3-frame GIF), dedup round-trip with env override.
+
+### 10.5 v0.9.0 — `cli.py` + compat shim
+
+1. `build_parser()` returns the identical argparse tree (flag-for-flag compatible); `main(argv=None)`
+   implements the §2.3 dispatch table + §3.4 exit-code contract; `--watch` loops collapse into one
+   `run_watch_loop(push_fn, interval)` helper; m12 progress gated on `sys.stdout.isatty()`.
+2. `ak820_ctrl.py` becomes the shim: `from ak820.cli import main` plus explicit re-exports of all
+   public names (`AK820ProDevice`, `parse_mode`, `MAX_FRAMES`, `UploadIncompleteError`,
+   `find_hidraw_devices`, `find_keyboard_hidraw`, `upload_frames_to_screen`, …) so pipx entry points
+   and user scripts never break.
+3. `pyproject.toml`: `packages = ["ak820"]` (keep `py-modules = ["ak820_ctrl"]` during transition),
+   console scripts → `ak820.cli:main`; PEP 639 `license = "MIT"` (§6.4).
+4. Tests: CLI smoke via `--save-preview` (device-free), exit-code assertions per §3.4 table,
+   `main(["backlight","set","--mode","banana"])` → non-zero + friendly stderr.
+
+### 10.6 v0.10.0 — CI + final polish gate
+
+GitHub Actions matrix (3.10–3.13) running `py_compile` + `unittest` + the §10.2 dependency greps;
+README exit-codes table + fonts note (§6.5); minor-defect table (m1–m12) closed or explicitly
+waived with rationale in this file.
+
+**Definition of Done per phase:** tag pushed, suite green, every new module < 300 lines, shim
+imports verified (`python3 -c "import ak820_ctrl; ak820_ctrl.<name>"` for each re-exported symbol).
