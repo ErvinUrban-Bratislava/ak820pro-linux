@@ -4,8 +4,9 @@
 `main(argv=None)` routes offline (device-free) commands first, then opens the
 HID device and dispatches through `DEVICE_HANDLERS`. Exit-code contract (§3.4,
 as shipped in `errors.py`): 0 success (incl. dedup skip), 2 argparse usage
-error, 3 device not found / permission denied / mid-op disconnect, 5 upload
-incomplete, 6 invalid events config (D4/D5).
+error, 3 device not found, 4 permission denied, 5 upload incomplete,
+6 invalid events config (D4/D5), 7 protocol desync, 75 mid-op disconnect
+(EX_TEMPFAIL, systemd-recoverable).
 """
 
 import argparse
@@ -254,9 +255,10 @@ def _dispatch(args):
 def main(argv=None) -> int:
     """Console entry point (ak820 / ak820-ctrl scripts, ak820_ctrl shim).
 
-    Exit-code contract (§3.4 + D4/D5): UploadIncompleteError -> 5, ConfigError
-    (invalid event date) -> 6, device/permission/disconnect -> 3, argparse
-    usage -> 2. Returns 0 on success (dedup skip included).
+    Exit-code contract (§3.4 + D4/D5/D8): UploadIncompleteError -> 5,
+    ConfigError (invalid event date) -> 6, DeviceNotFoundError -> 3,
+    PermissionDeniedError -> 4, ProtocolError -> 7, DeviceDisconnectedError
+    -> 75, argparse usage -> 2. Returns 0 on success (dedup skip included).
     """
     import milestone_radar as mr
 

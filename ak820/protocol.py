@@ -8,7 +8,10 @@ Firmware addresses are cited in comments per the FINDINGS.md convention.
 import struct
 
 VID = 0x0C45
-PIDS = [0x800A, 0x8009, 0xFEFE]
+# m11 (closed v0.12.0): exactly the PIDs the udev rule grants access to —
+# 0xFEFE was a reverse-engineering test fixture, never a shipping product,
+# and discovery matching it could never have worked without a udev rule anyway.
+PIDS = [0x800A, 0x8009]
 
 USAGE_PAGE_CONTROL = 0xFF13  # Interface 3: feature report commands & clock sync
 USAGE_PAGE_DATA = 0xFF68     # Interface 2: 4096-byte bulk image chunks + 64B ACK
@@ -135,7 +138,10 @@ def parse_hex_color(hex_str: str) -> tuple:
         h = "".join([c * 2 for c in h])
     if len(h) != 6:
         raise ValueError(f"Invalid hex color: '{hex_str}' (expected #RRGGBB or #RGB)")
-    return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    try:  # m10 root cause: "banana" is 6 chars but not hex — int('na', 16) must not leak
+        return int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except ValueError:
+        raise ValueError(f"Invalid hex color: '{hex_str}' (expected #RRGGBB or #RGB)") from None
 
 
 def parse_usage_page(desc: bytes):

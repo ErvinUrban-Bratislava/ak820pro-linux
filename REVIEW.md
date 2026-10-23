@@ -988,3 +988,42 @@ waived with rationale in this file.
 
 **Definition of Done per phase:** tag pushed, suite green, every new module < 300 lines, shim
 imports verified (`python3 -c "import ak820_ctrl; ak820_ctrl.<name>"` for each re-exported symbol).
+
+---
+
+## 11. Comprehensive Re-Audit (v0.12.0, 2026-10-24)
+
+Full architectural audit of the modular `ak820/` package (12 modules, largest `cli.py`
+at 278 lines — all < 300). Live state at audit: keyboard attached, `ak820 probe` OK,
+suite **155/155 → 171/171** after closing the findings below.
+
+### 11.1 New defects found & closed in v0.12.0
+
+| # | Finding | Evidence | Fix |
+|---|---|---|---|
+| **D8** | Exit-code contract silently drifted from §3.4: `PermissionDeniedError` exited **3** (indistinguishable from `DeviceNotFoundError` — a wrapper cannot tell "cable unplugged" from "udev rule missing"), and `ProtocolError` squatted on §3.4's permission code **4**. The README had been synced to the *code*, not the spec. | `errors.py` vs §3.4 table | `PermissionDeniedError` → **4** ("run setup steps"), `ProtocolError` → **7** (protocol desync, retry); README table, `DOCUMENTED_CODES`, and CLI tests re-synced; `tests/test_audit_fixes.py` |
+| **D9** | §3.6 was half-implemented: `handshake_failures` only ever *incremented* (never reset on success, never acted on) — a dead control pipe still surfaced as a confusing late failure instead of exit 75. | `device.py` `handshake()` | Success resets the counter; **2 consecutive** failures raise `DeviceDisconnectedError` (exit 75); `FakeTransport(ctrl_dead=True)` fault + 4 tests |
+| m5 | `DEFAULT_EVENTS_PATH` froze `$AK820_EVENTS_PATH` at import time and was never referenced | `milestone_radar.py:38` | Deleted; callers use `get_default_events_path()` |
+| m6 | `save_events_config` non-atomic; `os.makedirs(dirname)` crashed on a bare relative filename | render-time config corruption | `tempfile.mkstemp` + `os.replace`; `dirname or "."` |
+| m7 | Corrupt events JSON raised a raw `JSONDecodeError` traceback | `load_events_config` | Caught → `ConfigError` (exit 6) with the offending path |
+| m10 | `backlight set --color banana` traceback: `"banana"` is 6 chars so the length guard passed and `int('na', 16)` leaked a bare `ValueError` | `parse_hex_color` | Friendly message at the root + friendly `sys.exit` at the CLI call site |
+| m11 | `PIDS` shipped `0xFEFE` (a reverse-engineering test fixture) with zero udev coverage — discovery could match a device the rules never grant | `protocol.py` vs `udev/` | Dropped `0xFEFE`; new invariant test parses the udev rule and asserts the PID sets match |
+| — | §10.2 dependency rule was spec-only — never enforced by CI or tests | no grep, no test | `TestDependencyRuleInvariant`: no `fcntl`/`select`/`os.open` outside `transport.py`; no `milestone_radar` import anywhere in the protocol seam |
+
+### 11.2 Minor-defect table (m1–m12) — final status
+
+**All twelve closed.** m1 ✓ v0.7.0 · m2 ✓ v0.12.0 (D9 completed §3.6) · m3 ✓ v0.7.0 ·
+m4 ✓ v0.11.0 · m5 ✓ v0.12.0 · m6 ✓ v0.12.0 · m7 ✓ v0.12.0 · m8 ✓ v0.8.0 · m9 ✓ v0.8.0 ·
+m10 ✓ v0.12.0 · m11 ✓ v0.12.0 · m12 ✓ v0.9.0.
+
+### 11.3 Architecture verdict & remaining backlog
+
+Grades moved from §0's C+/B-/B+/C/C+ to **A- / B+ / B+ / A- / A-**: the transport seam makes
+the whole protocol layer hardware-free testable (171 offline tests), the error taxonomy is
+now spec-exact and invariant-locked, and every documented minor defect is closed.
+
+Remaining Tier B/C opportunities (queued in ITERATIONS.md, v0.13.0+): §3.5 alignment-skip on
+known-clean pipe (~2 s saved per repeat upload — biggest remaining perf win), `logging` +
+`--verbose` + single-`playerctl`-call media status (B6), shipped systemd units + `--dry-run`
+flag (B7), optional numpy RGB565 fast path (§4.4), `sync_clock` DST note (§6.5), and the
+`wait_for_keypress` stdin-EOF edge (returns "keypress" instantly when stdin is /dev/null).

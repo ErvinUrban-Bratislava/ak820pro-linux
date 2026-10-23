@@ -9,7 +9,12 @@ module-level function so any duck-typed device (including the legacy
 import datetime
 import time
 
-from .errors import AK820Error, ProtocolError, UploadIncompleteError
+from .errors import (
+    AK820Error,
+    DeviceDisconnectedError,
+    ProtocolError,
+    UploadIncompleteError,
+)
 from .protocol import (
     ACK_MAGIC,
     CHUNK_ACK_TIMEOUT_MS,
@@ -45,7 +50,13 @@ class AK820Pro:
         return self.transport.get_feature()
 
     def handshake(self, post_delay=CMD_DELAY):
-        """Wait for MCU main loop to process SET_FEATURE, then read GET_FEATURE ACK."""
+        """Wait for MCU main loop to process SET_FEATURE, then read GET_FEATURE ACK.
+
+        §3.6 (completed in v0.12.0, D9): two *consecutive* failures mean the
+        control pipe is dead — continuing only guarantees a confusing failure
+        later, so raise DeviceDisconnectedError (exit 75, systemd-recoverable).
+        Any success resets the counter, so a one-off blip never accumulates.
+        """
         time.sleep(CMD_DELAY)
         try:
             resp = self.get_feature()
@@ -53,6 +64,12 @@ class AK820Pro:
             resp = None
         if resp is None:
             self.handshake_failures += 1
+            if self.handshake_failures >= 2:
+                raise DeviceDisconnectedError(
+                    "Control pipe not responding (2 consecutive failed handshakes)."
+                )
+        else:
+            self.handshake_failures = 0
         time.sleep(post_delay)
         return resp
 

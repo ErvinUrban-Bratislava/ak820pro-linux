@@ -11,6 +11,7 @@ and custom AI sticky-note cards).
 import datetime
 import json
 import os
+import tempfile
 from typing import Dict, List, Optional, Tuple
 from PIL import Image, ImageDraw
 
@@ -35,7 +36,9 @@ def get_default_events_path() -> str:
     return os.path.join(xdg_config, "ak820", "events.json")
 
 
-DEFAULT_EVENTS_PATH = get_default_events_path()
+# m5 (closed v0.12.0): the old module-level DEFAULT_EVENTS_PATH froze
+# $AK820_EVENTS_PATH at import time and was never referenced — deleted.
+# Always call get_default_events_path() so env changes are honored.
 
 THEMES = {
     "today": {
@@ -174,15 +177,36 @@ def load_events_config(config_path: Optional[str] = None) -> Dict:
     path = config_path or get_default_events_path()
     if not os.path.exists(path):
         return {"default_mode": "radar", "default_preset": "bongo", "events": []}
-    with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except json.JSONDecodeError as exc:
+        # m7 (closed v0.12.0): corrupt JSON is a ConfigError (exit 6) with the
+        # offending path, not a raw JSONDecodeError traceback.
+        raise ConfigError(f"Invalid JSON in events config {path}: {exc}") from exc
 
 
 def save_events_config(cfg: Dict, config_path: Optional[str] = None):
+    """Atomically write the events config (m6, closed v0.12.0).
+
+    mkstemp + os.replace means a crash mid-write can never leave a truncated
+    config behind, and a bare relative filename (dirname == "") resolves to
+    "." instead of raising in os.makedirs.
+    """
     path = config_path or get_default_events_path()
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
+    parent = os.path.dirname(path) or "."
+    os.makedirs(parent, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=parent, prefix=".events-", suffix=".json.tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+        os.replace(tmp_path, path)
+    except BaseException:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 def _threshold(cfg: Dict, key: str, default: int) -> int:

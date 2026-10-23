@@ -184,10 +184,14 @@ class TestAlignRetry(ResilienceTestCase):
 
 class TestHandshakeObservability(unittest.TestCase):  # §3.6
     def test_handshake_failures_are_counted(self):
+        # v0.12.0 (D9): §3.6 completed — the first failure is tolerated and
+        # counted; the second consecutive failure means the control pipe is
+        # dead, so handshake() raises instead of counting to 2 in silence.
         dev = AK820Pro(DeafControlTransport())
         self.assertIsNone(dev.handshake())
-        self.assertIsNone(dev.handshake())
-        self.assertEqual(dev.handshake_failures, 2)
+        self.assertEqual(dev.handshake_failures, 1)
+        with self.assertRaises(DeviceDisconnectedError):
+            dev.handshake()
 
     def test_healthy_handshake_does_not_count(self):
         dev = AK820Pro(FakeTransport())

@@ -16,6 +16,7 @@
 | `v0.9.0` | 2026-10-23 | Done | Architecture Phase 3 (§10.5): `ak820/cli.py` (`build_parser()` flag-for-flag identical + `DEVICE_HANDLERS` dispatch table §2.3 + §3.4 exit-code `main(argv=None)`, `run_watch_loop` collapses both `--watch` loops, m12 progress gated on `isatty`) + `actions.py`/`backlight.py`/`status.py`/`config.py` command layer + `DeviceNotFoundError` (exit 3); `AK820ProDevice`/`wait_for_keypress` moved into `transport.py` (only fd/io module, §10.2); `ak820_ctrl.py` now a pure ~98-line re-export shim; console scripts → `ak820.cli:main`, PEP 639 `license = "MIT"`; all 12 package modules < 300 lines | `python3 -m unittest` 130/130 + live `probe`/`events list` |
 | `v0.10.0` | 2026-10-24 | Done | Invariant Audit, CI Workflow & Final Polish: GitHub Actions matrix (py_compile + unittest on Py 3.10–3.13) + `tests/test_invariants.py` (compile gate, error-taxonomy→`main()` exit-code mapping for every `AK820Error` subclass, README↔`errors.py` exit-code table sync, pipx entry points) + README Exit Codes/Architecture/Testing sections | `python3 -m unittest` 137/137 + local `py_compile` gate |
 | `v0.11.0` | 2026-10-24 | Done | Reliability & Robustness: `DeviceDisconnectedError` → exit 75 `EX_TEMPFAIL` (§3.4, systemd-recoverable unplug) + real-transport ENODEV read translation (unplug ≠ ACK timeout) + m4 align retry-once-then-abort (actions + device) + one automatic full upload retry on transient ACK loss (§3.4 exit-5 policy) + observable `handshake_failures` counter (§3.6) + `FakeTransport` faults `drop_once`/`disconnect_at` + 18 offline resilience tests, zero hardware | `python3 -m unittest` 155/155 |
+| `v0.12.0` | 2026-10-24 | Done | Comprehensive Re-Audit & Contract Reconciliation: D8 exit-code drift fixed (`PermissionDeniedError`→4, `ProtocolError`→7 per §3.4; README re-synced to spec not code) + D9 §3.6 completed (handshake counter resets on success, dead control pipe raises exit-75 after 2 consecutive failures) + last open minor defects closed (m5 import-time path deleted, m6 atomic config write, m7 corrupt-JSON→`ConfigError`, m10 friendly `--color` error, m11 PIDS↔udev parity) + §10.2 dependency rule now test-enforced + REVIEW.md §11 audit trail; m1–m12 all closed | `python3 -m unittest` 171/171 + live `probe` |
 
 ---
 
@@ -87,4 +88,26 @@
   - Disconnect recovery & timeout guards: one automatic full upload retry (re-align + re-stream) on transient ACK loss (§3.4 exit-5 "retry once"); m4 align failure retries once then aborts with `ProtocolError`; observable `handshake_failures` counter (§3.6).
   - `FakeTransport` fault injection extended: `drop_once` (transient loss) and `disconnect_at` (mid-upload ENODEV simulation).
   - New `tests/test_resilience.py` (18 offline tests) covering recovery, abort, errno translation, and the exit-75 CLI contract.
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [x] **`v0.12.0`** — Comprehensive Re-Audit & Contract Reconciliation (REVIEW.md §11):
+  - D8: exit-code contract reconciled with §3.4 — `PermissionDeniedError` → 4 (was 3, indistinguishable from device-not-found), `ProtocolError` → 7 (was squatting on the permission code); README table re-synced to the spec, `DOCUMENTED_CODES` extended, CLI tests updated.
+  - D9: §3.6 dead-control-pipe detection completed — `handshake()` resets the counter on success and raises `DeviceDisconnectedError` (exit 75) after 2 consecutive failures; `FakeTransport(ctrl_dead=True)` fault.
+  - Last open minor defects closed: m5 (import-time `DEFAULT_EVENTS_PATH` deleted), m6 (atomic `save_events_config` via mkstemp+`os.replace`, bare-relative-path safe), m7 (corrupt JSON → `ConfigError` exit 6), m10 (friendly `--color banana` error at root + call site), m11 (`0xFEFE` dropped; PIDS↔udev parity now test-locked).
+  - §10.2 dependency rule made executable: `TestDependencyRuleInvariant` (no fd/io outside `transport.py`, no rendering-domain imports in the protocol seam).
+  - New `tests/test_audit_fixes.py` (16 offline tests); m1–m12 all closed; REVIEW.md §11 audit trail.
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [ ] **`v0.13.0`** — Performance: Alignment-Skip on Known-Clean Pipe (§3.5/§4.1, biggest remaining win):
+  - Record pipe-clean state in the dedup state file after a fully-ACKed SAVE; skip the ~1.6–2 s `align_data_pipe` on the next upload when the pipe is provably clean (sub_packet_idx == 0 per FINDINGS.md §4).
+  - Flip to dirty pessimistically before streaming; any timeout/crash re-aligns next run.
+  - `FakeTransport` starts dirty (nonzero ring index) to prove the skip is state-driven, not unconditional.
+  - Measure before/after wall time on a repeat upload against `FakeTransport`; add regression tests for skip, dirty-flip, and recovery.
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [ ] **`v0.14.0`** — Ops & Observability backlog (REVIEW.md B6/B7 + §6.5):
+  - `logging` to stderr + global `--verbose/-v`; stdout reserved for machine-readable data (`events list --json`).
+  - Single `playerctl -f '{{status}}\t{{title}}\t{{artist}}\t{{album}}' metadata` call instead of four subprocesses (§4.3).
+  - Ship `systemd/ak820-radar.{service,timer}` + `ak820-hud.service` (Restart=on-failure pairs with exit 75); `--dry-run` global flag (render + digest + chunk count, no USB).
+  - `sync_clock` DST ambiguity note (§6.5); `wait_for_keypress` stdin-EOF edge (instant false "keypress" when stdin is /dev/null).
   - Verify `python3 -m unittest discover -s tests` passes 100%.

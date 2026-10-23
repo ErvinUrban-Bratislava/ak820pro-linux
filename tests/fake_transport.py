@@ -10,8 +10,12 @@ Models the three firmware behaviors FINDINGS.md documents:
       `drop_once=True` (the drop is transient — later ACKs flow again, so an
       operation-level retry recovers), and
       `disconnect_at=N` (the device is "unplugged" after N ring-wrap chunks:
-      every subsequent call raises DeviceDisconnectedError — ENODEV model).
+      every subsequent call raises DeviceDisconnectedError — ENODEV model), and
+      `ctrl_dead=True` (the control pipe is dead: every get_feature raises
+      OSError(ENODEV) — the §3.6 dead-handshake model).
 """
+
+import errno
 
 from ak820.errors import DeviceDisconnectedError
 
@@ -21,7 +25,8 @@ ACK = b"\x01\x5A\x02" + b"\x00" * 61
 class FakeTransport:
     """Emulates SN32F290: 64-packet sub-counter, per-chunk ACK, injectable faults."""
 
-    def __init__(self, drop_ack_at=None, ack_magic=True, drop_once=False, disconnect_at=None):
+    def __init__(self, drop_ack_at=None, ack_magic=True, drop_once=False, disconnect_at=None,
+                 ctrl_dead=False):
         self.sub_packet_idx = 0          # firmware [0x2000003A]
         self.chunks_expected = 0
         self.chunks_seen = 0
@@ -34,6 +39,7 @@ class FakeTransport:
         self._drop_fired = False
         self.disconnect_at = disconnect_at  # "unplug" after N ring-wrap chunks
         self.dead = False
+        self.ctrl_dead = ctrl_dead         # control pipe dead (§3.6 model)
 
     def _check_alive(self):
         if self.dead:
@@ -52,6 +58,8 @@ class FakeTransport:
 
     def get_feature(self) -> bytes:
         self._check_alive()
+        if self.ctrl_dead:
+            raise OSError(errno.ENODEV, "simulated dead control pipe")
         return b"\x00" * 64                              # canned handshake
 
     # --- data pipe ------------------------------------------------------------

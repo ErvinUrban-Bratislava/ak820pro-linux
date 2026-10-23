@@ -214,10 +214,11 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 |:---|:---|:---|
 | `0` | Success (includes dedup skip: identical payload already on screen) | — |
 | `2` | Argparse usage error (bad/missing flags) | `argparse` |
-| `3` | Device not found, permission denied (udev rule missing?) | `DeviceNotFoundError`, `PermissionDeniedError` |
-| `4` | Device answered with a malformed/unexpected reply (ACK magic mismatch — transfer state unknown, aborted), or data pipe will not align after one retry | `ProtocolError` |
+| `3` | Device not found (is the keyboard connected via USB?) | `DeviceNotFoundError` |
+| `4` | Permission denied on the device node — install the udev rule from `udev/` (see Setup) | `PermissionDeniedError` |
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
-| `6` | Invalid events config (malformed event date — nothing saved or rendered) | `ConfigError` |
+| `6` | Invalid events config (malformed event date or corrupt JSON — nothing saved or rendered) | `ConfigError` |
+| `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
 | `75` | `EX_TEMPFAIL`: USB device vanished mid-operation — transient, systemd `Restart=on-failure` will re-run the command | `DeviceDisconnectedError` |
 
 All driver errors derive from `AK820Error` (`ak820/errors.py`), which carries the exit code as an attribute. A regression test (`tests/test_invariants.py`) fails the build if this table ever drifts from the shipped taxonomy.

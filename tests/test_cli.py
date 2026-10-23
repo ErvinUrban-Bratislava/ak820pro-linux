@@ -127,9 +127,11 @@ class TestExitCodeContract(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 3)
         self.assertIn("not found", err.getvalue())
 
-    def test_permission_denied_is_3(self):
+    def test_permission_denied_is_4(self):
+        # D8 (v0.12.0): §3.4 reserves 4 for permission denied, so "udev rule
+        # missing" is distinguishable from "device not found" (3) via $? alone.
         code, _ = self._expect_exit(ak820_ctrl.PermissionDeniedError("no perms"), ["probe"])
-        self.assertEqual(code, 3)
+        self.assertEqual(code, 4)
 
     def test_config_error_is_6(self):
         import milestone_radar as mr

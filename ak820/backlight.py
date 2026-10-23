@@ -235,7 +235,10 @@ def dispatch_backlight(dev, args):
                 mode_val = parse_mode(args.mode) if args.mode else 1
             except ValueError as exc:
                 sys.exit(f"Error: {exc}")
-            r, g, b = parse_hex_color(args.color)
+            try:  # m10: `--color banana` must fail friendly, not with a traceback
+                r, g, b = parse_hex_color(args.color)
+            except ValueError as exc:
+                sys.exit(f"Error: {exc}")
             set_backlight(
                 dev, mode=mode_val, r=r, g=g, b=b, rainbow=args.rainbow,
                 brightness=args.brightness, speed=args.speed,

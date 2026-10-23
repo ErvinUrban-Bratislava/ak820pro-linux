@@ -13,9 +13,15 @@ class AK820Error(Exception):
 
 class ProtocolError(AK820Error):
     """Device answered with a malformed/unexpected reply (e.g. ACK magic
-    mismatch — minor defect m3). The transfer state is unknown; abort."""
+    mismatch — minor defect m3), or the data pipe will not align. The transfer
+    state is unknown; abort.
 
-    exit_code = 4
+    v0.12.0 (D8): code 7, not 4 — §3.4 reserves 4 for permission denied so
+    scripts can branch "install the udev rule" (4) vs "protocol desync, retry"
+    (7) on `$?` alone.
+    """
+
+    exit_code = 7
 
 
 class DeviceDisconnectedError(AK820Error):
@@ -42,9 +48,14 @@ class DeviceNotFoundError(AK820Error):
 
 class PermissionDeniedError(AK820Error):
     """The device node rejected the operation (errno EPERM/EACCES — the udev
-    rule from ``udev/`` is probably not installed)."""
+    rule from ``udev/`` is probably not installed).
 
-    exit_code = 3
+    v0.12.0 (D8): exit 4 per §3.4 ("run setup steps"), distinct from
+    DeviceNotFoundError (3 = give up) so a CI wrapper can tell "cable unplugged"
+    from "udev rule missing" without parsing stderr.
+    """
+
+    exit_code = 4
 
 
 class UploadIncompleteError(AK820Error):

@@ -24,10 +24,11 @@ sys.path.insert(0, str(ROOT))
 from ak820 import cli
 from ak820.errors import AK820Error
 
-# §3.4 exit-code contract: 0 success, 2 argparse usage, 3 device/permission,
-# 4 protocol, 5 upload incomplete, 6 invalid events config,
+# §3.4 exit-code contract (D8 reconciled v0.12.0): 0 success, 2 argparse usage,
+# 3 device not found, 4 permission denied, 5 upload incomplete,
+# 6 invalid events config, 7 protocol desync,
 # 75 EX_TEMPFAIL transient mid-op disconnect (systemd Restart= retries).
-DOCUMENTED_CODES = {0, 2, 3, 4, 5, 6, 75}
+DOCUMENTED_CODES = {0, 2, 3, 4, 5, 6, 7, 75}
 
 
 def _all_error_classes(cls=AK820Error):
@@ -93,6 +94,31 @@ class TestReadmeExitCodeSync(unittest.TestCase):
         text = (ROOT / "README.md").read_text(encoding="utf-8")
         for cls in _all_error_classes():
             self.assertIn(cls.__name__, text, f"README never names {cls.__name__}")
+
+
+class TestDependencyRuleInvariant(unittest.TestCase):
+    """§10.2 (enforced from v0.12.0): the fd/io seam lives ONLY in transport.py,
+    and the protocol/device/state seam never reaches into the rendering domain."""
+
+    def test_no_fd_io_outside_transport(self):
+        for py in sorted((ROOT / "ak820").glob("*.py")):
+            if py.name == "transport.py":
+                continue
+            text = py.read_text(encoding="utf-8")
+            for forbidden in ("import fcntl", "import select", "os.open("):
+                self.assertNotIn(
+                    forbidden, text,
+                    f"{py.name} touches fd/io ({forbidden!r}) outside transport.py (§10.2)",
+                )
+
+    def test_protocol_seam_never_imports_rendering(self):
+        import_line = re.compile(r"^\s*(from|import)\s+milestone_radar\b", re.M)
+        for name in ("protocol.py", "transport.py", "device.py", "state.py", "screen.py"):
+            text = (ROOT / "ak820" / name).read_text(encoding="utf-8")
+            self.assertIsNone(
+                import_line.search(text),
+                f"{name} imports the rendering domain milestone_radar (§10.2)",
+            )
 
 
 class TestEntryPointInvariant(unittest.TestCase):
