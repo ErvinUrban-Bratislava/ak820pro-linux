@@ -93,13 +93,22 @@ class LinuxHidrawTransport:
             raise self._translate(exc, "data-pipe write") from exc
 
     def read_data(self, timeout: float) -> Optional[bytes]:
-        """Return one 64-byte ACK if one arrives within `timeout`, else None."""
+        """Return one 64-byte ACK if one arrives within `timeout`, else None.
+
+        Timeout guard (v0.11.0): a plain timeout is None, but ENODEV means the
+        device vanished — surface it as DeviceDisconnectedError (exit 75) so an
+        unplug mid-upload is a recoverable event, not a silent ACK shortfall
+        misattributed to flaky firmware (UploadIncompleteError, exit 5).
+        """
         try:
             r, _, _ = select.select([self.data_fd], [], [], timeout)
             if r:
                 return os.read(self.data_fd, 64)
-        except OSError:
-            return None
+        except OSError as exc:
+            translated = self._translate(exc, "data-pipe read")
+            if isinstance(translated, DeviceDisconnectedError):
+                raise translated from exc
+            return None  # EAGAIN/EBADF etc: treat as "no ACK within timeout"
         return None
 
 

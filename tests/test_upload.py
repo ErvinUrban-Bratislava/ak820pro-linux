@@ -31,6 +31,9 @@ class FakeTransport:
         self.feature_packets = []  # every 64-byte feature report sent
 
     def align_data_pipe(self):
+        # v0.11.0: a full retry re-aligns before re-streaming, and chunk
+        # numbering restarts from 0 — the drop set applies per attempt.
+        self.sent_chunks = 0
         return (0, True)
 
     def send_feature(self, data):

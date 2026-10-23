@@ -26,6 +26,9 @@ class AK820Pro:
 
     def __init__(self, transport):
         self.transport = transport
+        # §3.6: handshakes are observable — a rising count is the early signal
+        # of a flaky cable/hub long before an upload actually fails.
+        self.handshake_failures = 0
 
     def close(self):
         close = getattr(self.transport, "close", None)
@@ -48,6 +51,8 @@ class AK820Pro:
             resp = self.get_feature()
         except (OSError, AK820Error):
             resp = None
+        if resp is None:
+            self.handshake_failures += 1
         time.sleep(post_delay)
         return resp
 
@@ -130,7 +135,14 @@ class AK820Pro:
         accounting (D2/m3), then SAVE. Returns True only on a complete transfer."""
         payload_bytes, num_frames, total_chunks = build_payload(frames, delays_ms)
         if align:
-            self.align_data_pipe()
+            # m4: an un-aligned pipe is the exact desync state alignment exists
+            # to prevent — retry once, then abort instead of streaming into it.
+            if not self.align_data_pipe()[1]:
+                if not self.align_data_pipe()[1]:
+                    raise ProtocolError(
+                        "Data pipe will not align after 2 attempts — "
+                        "check the cable / re-seat the device."
+                    )
         stream_payload(self, payload_bytes, total_chunks, progress=progress)
         return True
 

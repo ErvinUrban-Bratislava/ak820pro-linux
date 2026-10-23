@@ -10,7 +10,7 @@ import sys
 
 from . import state
 from .device import stream_payload
-from .errors import UploadIncompleteError
+from .errors import ProtocolError, UploadIncompleteError
 from .protocol import MAX_FRAMES, build_payload
 from .screen import image_to_rgb565, load_frames_from_file
 
@@ -37,10 +37,17 @@ def upload_frames_to_screen(
 
     print("Aligning USB data pipe sub-packet counter...")
     aligned_pkts, acked = dev.align_data_pipe()
-    if acked:
-        print(f"  Aligned: flash ACK after {aligned_pkts} packets -> sub-packet counter locked to 0.")
-    else:
-        print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets).")
+    if not acked:
+        # m4: streaming into an un-aligned pipe is the desync state alignment
+        # exists to prevent — retry once, then abort before any chunk is sent.
+        print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets) — retrying alignment once...")
+        aligned_pkts, acked = dev.align_data_pipe()
+        if not acked:
+            raise ProtocolError(
+                "Data pipe will not align after 2 attempts — "
+                "check the cable / re-seat the device. Upload aborted."
+            )
+    print(f"  Aligned: flash ACK after {aligned_pkts} packets -> sub-packet counter locked to 0.")
 
     print(f"Uploading '{label}' ({num_frames} frame(s), {total_chunks} chunks)...")
 
@@ -56,7 +63,16 @@ def upload_frames_to_screen(
     # only reached when every chunk was ACKed, so on failure the digest below is
     # never recorded and the next run retries instead of skipping the upload.
     try:
-        stream_payload(dev, payload_bytes, total_chunks, progress=progress)
+        try:
+            stream_payload(dev, payload_bytes, total_chunks, progress=progress)
+        except UploadIncompleteError:
+            # §3.4 exit-5 consumer behavior: a transient ACK loss gets exactly
+            # one full retry (re-align + re-stream from chunk 0). Safe because
+            # the digest is only recorded after a fully-ACKed SAVE, so a retry
+            # can never double-flash or skip a payload that never landed.
+            print("\n  Upload incomplete — re-aligning and retrying the full transfer once...")
+            dev.align_data_pipe()
+            stream_payload(dev, payload_bytes, total_chunks, progress=progress)
     except UploadIncompleteError:
         if progress is not None:
             print()

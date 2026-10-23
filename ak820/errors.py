@@ -19,9 +19,14 @@ class ProtocolError(AK820Error):
 
 
 class DeviceDisconnectedError(AK820Error):
-    """The USB device node vanished mid-operation (errno ENODEV)."""
+    """The USB device node vanished mid-operation (errno ENODEV).
 
-    exit_code = 3
+    §3.4: this is a *transient* mid-op failure, distinct from DeviceNotFoundError
+    (give up, 3). Exit 75 = EX_TEMPFAIL so a systemd ``Restart=on-failure``
+    unit (or a cron wrapper) re-runs the command once the keyboard is re-seated.
+    """
+
+    exit_code = 75
 
 
 class DeviceNotFoundError(AK820Error):

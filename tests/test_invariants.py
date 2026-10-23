@@ -24,9 +24,10 @@ sys.path.insert(0, str(ROOT))
 from ak820 import cli
 from ak820.errors import AK820Error
 
-# §3.4 exit-code contract: 0 success, 2 argparse usage, 3 device/permission/
-# disconnect, 4 protocol, 5 upload incomplete, 6 invalid events config.
-DOCUMENTED_CODES = {0, 2, 3, 4, 5, 6}
+# §3.4 exit-code contract: 0 success, 2 argparse usage, 3 device/permission,
+# 4 protocol, 5 upload incomplete, 6 invalid events config,
+# 75 EX_TEMPFAIL transient mid-op disconnect (systemd Restart= retries).
+DOCUMENTED_CODES = {0, 2, 3, 4, 5, 6, 75}
 
 
 def _all_error_classes(cls=AK820Error):

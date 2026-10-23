@@ -15,6 +15,7 @@
 | `v0.8.0` | 2026-10-23 | Done | Architecture Phase 2: `ak820/screen.py` (byte-identical optimized per-row RGB565 packer ~1.2 ms/frame, `fit_image` m9 alpha-mask fix, GIF loader, shared render_common constants + `lru_cache` fonts m8/§4.2) + `ak820/state.py` (dedup out of `milestone_radar` — §2.1 layering inversion killed — with `AK820_STATE_PATH` override + §4.5 memoryview hashing); `upload_frames_to_screen` no longer imports `milestone_radar`; full shim re-exports preserved | `python3 -m unittest` 108/108 |
 | `v0.9.0` | 2026-10-23 | Done | Architecture Phase 3 (§10.5): `ak820/cli.py` (`build_parser()` flag-for-flag identical + `DEVICE_HANDLERS` dispatch table §2.3 + §3.4 exit-code `main(argv=None)`, `run_watch_loop` collapses both `--watch` loops, m12 progress gated on `isatty`) + `actions.py`/`backlight.py`/`status.py`/`config.py` command layer + `DeviceNotFoundError` (exit 3); `AK820ProDevice`/`wait_for_keypress` moved into `transport.py` (only fd/io module, §10.2); `ak820_ctrl.py` now a pure ~98-line re-export shim; console scripts → `ak820.cli:main`, PEP 639 `license = "MIT"`; all 12 package modules < 300 lines | `python3 -m unittest` 130/130 + live `probe`/`events list` |
 | `v0.10.0` | 2026-10-24 | Done | Invariant Audit, CI Workflow & Final Polish: GitHub Actions matrix (py_compile + unittest on Py 3.10–3.13) + `tests/test_invariants.py` (compile gate, error-taxonomy→`main()` exit-code mapping for every `AK820Error` subclass, README↔`errors.py` exit-code table sync, pipx entry points) + README Exit Codes/Architecture/Testing sections | `python3 -m unittest` 137/137 + local `py_compile` gate |
+| `v0.11.0` | 2026-10-24 | Done | Reliability & Robustness: `DeviceDisconnectedError` → exit 75 `EX_TEMPFAIL` (§3.4, systemd-recoverable unplug) + real-transport ENODEV read translation (unplug ≠ ACK timeout) + m4 align retry-once-then-abort (actions + device) + one automatic full upload retry on transient ACK loss (§3.4 exit-5 policy) + observable `handshake_failures` counter (§3.6) + `FakeTransport` faults `drop_once`/`disconnect_at` + 18 offline resilience tests, zero hardware | `python3 -m unittest` 155/155 |
 
 ---
 
@@ -79,4 +80,11 @@
 - [x] **`v0.10.0`** — Invariant Audit, CI Workflow & Final Polish:
   - Add GitHub Actions CI workflow running `unittest` and `py_compile` across Python 3.10, 3.11, 3.12, 3.13.
   - Verify zero regressions, complete documentation update in `README.md`, and clean exit codes.
+  - Verify `python3 -m unittest discover -s tests` passes 100%.
+
+- [x] **`v0.11.0`** — Reliability & Robustness (zero hardware attached):
+  - Protocol-level error handling: `DeviceDisconnectedError` exits 75 `EX_TEMPFAIL` (§3.4) so a mid-op unplug is systemd-recoverable; `LinuxHidrawTransport.read_data` translates ENODEV into that error instead of masking an unplug as an ACK timeout.
+  - Disconnect recovery & timeout guards: one automatic full upload retry (re-align + re-stream) on transient ACK loss (§3.4 exit-5 "retry once"); m4 align failure retries once then aborts with `ProtocolError`; observable `handshake_failures` counter (§3.6).
+  - `FakeTransport` fault injection extended: `drop_once` (transient loss) and `disconnect_at` (mid-upload ENODEV simulation).
+  - New `tests/test_resilience.py` (18 offline tests) covering recovery, abort, errno translation, and the exit-75 CLI contract.
   - Verify `python3 -m unittest discover -s tests` passes 100%.
