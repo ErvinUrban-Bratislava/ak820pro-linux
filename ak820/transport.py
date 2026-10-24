@@ -166,9 +166,8 @@ def wait_for_keypress(timeout=None):
     dev_paths = find_keyboard_hidraw()
     fds = []
     for p in dev_paths:
-        if os.path.exists(p):
-            with contextlib.suppress(OSError):
-                fds.append(os.open(p, os.O_RDONLY | os.O_NONBLOCK))
+        with contextlib.suppress(OSError):
+            fds.append(os.open(p, os.O_RDONLY | os.O_NONBLOCK))
     if not fds:
         # Fallback to stdin wait if no AK820 Pro hidraw node is accessible.
         # v0.14.0: select() reports /dev/null (and any EOF pipe) as *readable*,

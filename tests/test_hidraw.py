@@ -80,7 +80,7 @@ class WaitForKeypressDynamicScanTests(unittest.TestCase):
 
     def test_opens_discovered_paths_not_hardcoded(self):
         with mock.patch.object(transport, "find_keyboard_hidraw",
-                               return_value=["/dev/hidraw7"]) as m_find, \
+                               return_value=["/dev/hidraw999"]) as m_find, \
              mock.patch.object(ak820_ctrl.os, "open", return_value=42) as m_open, \
              mock.patch.object(ak820_ctrl.os, "read", return_value=b"\x01" * 64), \
              mock.patch.object(ak820_ctrl.os, "close"), \
@@ -90,7 +90,7 @@ class WaitForKeypressDynamicScanTests(unittest.TestCase):
         self.assertTrue(result)
         m_find.assert_called_once()
         opened = [c.args[0] for c in m_open.call_args_list]
-        self.assertEqual(opened, ["/dev/hidraw7"])
+        self.assertEqual(opened, ["/dev/hidraw999"])
         self.assertNotIn("/dev/hidraw0", opened)
         self.assertNotIn("/dev/hidraw1", opened)
 
