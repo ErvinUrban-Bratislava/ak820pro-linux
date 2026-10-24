@@ -1459,3 +1459,72 @@ through `main()`. Suite: 342 → 373 tests, all green (5 numpy-optional skips
 on numpy-free system python); `scripts/lint.sh` GREEN; live probes through
 the shim: shape/dir config → 6, bare `backlight` → 2, `--seconds nan` → 2,
 unwritable preview → 9, `probe` → 0 on real hardware, version 0.24.0.
+## 22. Architecture & Modularity — Top-Level Monolith Decomposition (v0.25.0, 2026-10-24)
+
+The `ak820/` package had been under the §10 budget since v0.16.0, but the two
+top-level rendering modules had drifted far past it while mixing three
+responsibilities each: `milestone_radar.py` (510 lines) held the events-config
+domain, the urgency palette, and the card renderers; `widgets.py` (359 lines)
+held sysfs/proc + D-Bus observation and the HUD/media renderers. Worse, the
+package reached *back out* through them: `cli.main()` imported `milestone_radar`
+just to catch `ConfigError`, and `backlight.py` (lighting domain) persisted its
+idle preset through the rendering monolith. v0.25.0 splits both monoliths into
+single-responsibility package modules and reverses that arrow for good:
+
+| New module | Lines | Responsibility | Imports |
+|:---|:---|:---|:---|
+| `ak820/events.py` | 230 | events-config domain: path resolution, D4/D5 dates, m7/D22 shape, D7 thresholds, countdown rows | stdlib + `errors` |
+| `ak820/palette.py` | 77 | THEMES urgency palette (pure data, one entry per `theme_key`) | `typing` only |
+| `ak820/cards.py` | 263 | hero/board/custom 128x128 renderers (pure functions of row dicts) | PIL + `screen`, `palette` |
+| `ak820/telemetry.py` | 243 | sysfs/proc sampling + playerctl/MPRIS probes (best-effort, never raises) | stdlib only |
+| `ak820/hud.py` | 197 | HUD + Now-Playing renderers (stats/media injectable) | PIL + `screen` |
+
+- **Shims**: `milestone_radar.py` (60 lines) and `widgets.py` (33 lines) are now
+  pure identity re-exports (`mr.load_events_config is ak820.events.load_events_config`),
+  so every historical `milestone_radar.*` / `widgets.*` import, user script, and
+  systemd timer keeps working (locked by `tests/test_modularity_v025.py`).
+- **Package self-containment**: no `ak820/` module imports the top-level shims
+  anymore — the dependency arrow points one way (shims → package), grep-locked
+  across every package module. `cli.main()` lost its `milestone_radar` import
+  and its second except branch.
+- **`ConfigError` re-parented**: moved from `milestone_radar` into `errors.py`
+  under `AK820Error` (exit 6 unchanged). `main()`'s single `except AK820Error`
+  branch covers it, and the §3.4 invariant test that maps *every* error class
+  to its exit code now covers `ConfigError` automatically.
+- **Domain/rendering seam**: `events.py`/`telemetry.py`/`palette.py` are PIL-free
+  (config and probe paths never load Pillow); `cards.py` never imports `events`
+  (renderers consume plain row dicts); `hud.py` keeps its telemetry import
+  function-level so both renderers stay injectable and offline-testable.
+- **Probe seam move for tests**: `get_media_status` now lives in `telemetry`, so
+  the canonical patch target is `ak820.telemetry.shutil` / `.subprocess`
+  (`test_observability.py` updated; patching `widgets.shutil` now fails loudly
+  instead of silently no-op'ing).
+
+### 22.1 Behavior neutrality — proven, not asserted
+
+A 13-fixture render manifest (hero incl. empty/single states, board incl.
+empty, custom incl. bogus theme, HUD incl. hot thresholds, media playing/paused/
+idle + the computed countdown rows) was captured **before** the split and
+re-verified **after**: all PNG sha256 digests byte-identical. Moving the probe
+code into `ak820/` brought it inside the lint gate's scope for the first time:
+24 new ruff findings were fixed behavior-neutrally (typing modernization,
+`contextlib.suppress` for the unlink guard, `l`→`ln` renames) or justified
+inline with the `state.py` noqa idiom (best-effort probe contract on
+BLE001/S110/S112; PATH-probing optional tools on S603/S607).
+
+### 22.2 Verification
+
+`tests/test_modularity_v025.py` (18 offline tests, zero hardware): shim identity
+across 19 `milestone_radar` + 4 `widgets` names, package-shim import grep ban,
+PIL-free domain modules, `cards`↛`events` and `hud` function-level telemetry
+seams, `ConfigError` re-parenting + exit-6 mapping through `main()`, <300-line
+budget for the five new modules **and** the three top-level shims, fresh-
+interpreter no-cycle import of every new module, and byte-level render parity
+through both surfaces. Suite: 373 → 391 tests, all green (5 numpy-optional
+skips); `scripts/lint.sh` GREEN (ruff + format + mypy, 21 sources). Live probes
+through the shim: `events list/--json/add/remove` via `$AK820_EVENTS_PATH`,
+`--dry-run radar|card`, `radar/hud/media --save-preview`, corrupt config → 6,
+no-match remove → 6, bad `--date` → 6, bare `backlight` → 2. Found while
+probing: `events` rejects `--config` while `radar` accepts it → queued v0.26.0.
+
+---

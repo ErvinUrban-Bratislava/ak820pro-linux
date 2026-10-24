@@ -1,13 +1,16 @@
 """RGB backlight presets, idle-config persistence, `backlight` dispatch (v0.9.0).
 
 Extracted from `ak820_ctrl.py` (§10.5). Depends only on {protocol, transport,
-errors} + milestone_radar for the events-config persistence of the idle preset.
+errors, events} — the events-config domain (not the rendering shim) owns the
+idle-preset persistence since the v0.25.0 split.
 """
 
 import sys
 import time
 from typing import Any
 
+from . import events
+from .errors import ConfigError
 from .protocol import CMD_DELAY, LIGHT_MODES, _cmd_packet, parse_hex_color, parse_mode
 
 # Heterogeneous preset records (str/int/bool values) — `Any` keeps the dict
@@ -143,9 +146,7 @@ def set_backlight(
 
 
 def get_idle_backlight_cfg() -> dict:
-    import milestone_radar as mr
-
-    cfg = mr.load_events_config()
+    cfg = events.load_events_config()
     bl = cfg.get("backlight", {})
     return {
         "preset": bl.get("idle_preset", "warm-white"),
@@ -167,9 +168,7 @@ def save_idle_backlight_cfg(
     speed: int = 3,
     direction: int = 0,
 ):
-    import milestone_radar as mr
-
-    cfg = mr.load_events_config()
+    cfg = events.load_events_config()
     cfg["backlight"] = {
         "idle_preset": idle_preset,
         "idle_mode": mode,
@@ -179,7 +178,7 @@ def save_idle_backlight_cfg(
         "idle_speed": speed,
         "idle_direction": direction,
     }
-    mr.save_events_config(cfg)
+    events.save_events_config(cfg)
 
 
 def apply_idle_backlight(dev):
@@ -196,9 +195,7 @@ def apply_idle_backlight(dev):
             r, g, b = parse_hex_color(cfg["color"])
         except ValueError as exc:
             # m19 (v0.24.0, §21): hand-edited idle_color -> ConfigError (6), never a raw traceback.
-            import milestone_radar as mr
-
-            raise mr.ConfigError(f"Invalid idle backlight color in events config: {exc}") from exc
+            raise ConfigError(f"Invalid idle backlight color in events config: {exc}") from exc
         set_backlight(
             dev,
             cfg["mode"],

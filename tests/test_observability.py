@@ -145,8 +145,10 @@ class TestPlayerctlSingleCall(unittest.TestCase):
             calls.append(cmd)
             return "Playing\tBohemian Rhapsody\tQueen\tA Night at the Opera\n"
 
-        with mock.patch("widgets.shutil.which", return_value="/usr/bin/playerctl"), \
-             mock.patch("widgets.subprocess.check_output", side_effect=fake_check_output):
+        # v0.25.0: the probe seam moved to ak820.telemetry (widgets is a shim);
+        # the call still goes through the shim to prove re-export identity.
+        with mock.patch("ak820.telemetry.shutil.which", return_value="/usr/bin/playerctl"), \
+             mock.patch("ak820.telemetry.subprocess.check_output", side_effect=fake_check_output):
             media = widgets.get_media_status()
 
         self.assertEqual(len(calls), 1, f"expected 1 subprocess call, got {len(calls)}")
@@ -162,8 +164,8 @@ class TestPlayerctlSingleCall(unittest.TestCase):
         def fake_check_output(cmd, **kwargs):
             return ""
 
-        with mock.patch("widgets.shutil.which", return_value="/usr/bin/playerctl"), \
-             mock.patch("widgets.subprocess.check_output", side_effect=fake_check_output):
+        with mock.patch("ak820.telemetry.shutil.which", return_value="/usr/bin/playerctl"), \
+             mock.patch("ak820.telemetry.subprocess.check_output", side_effect=fake_check_output):
             media = widgets.get_media_status()
         self.assertFalse(media["active"])
 

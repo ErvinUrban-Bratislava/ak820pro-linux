@@ -8,7 +8,8 @@ import datetime
 import json
 import os
 
-from .errors import InvalidFileError
+from . import events
+from .errors import ConfigError, InvalidFileError
 
 
 def today_from_args(args):
@@ -19,28 +20,24 @@ def today_from_args(args):
     but never this path. Invalid overrides now raise ConfigError (exit 6),
     the same contract D4 established for malformed event dates.
     """
-    import milestone_radar as mr
-
     raw = getattr(args, "date", None)
     if not raw:
         return datetime.date.today()
     try:
         return datetime.date.fromisoformat(raw)
     except ValueError:
-        raise mr.ConfigError(
+        raise ConfigError(
             f"Invalid --date {raw!r}: expected a YYYY-MM-DD date (e.g. 2026-10-24)."
         ) from None
 
 
 def cmd_events(args):
     """`events list|add|remove` against the events JSON config (D4: add validates dates)."""
-    import milestone_radar as mr
-
     cfg_path = getattr(args, "config", None)
-    cfg = mr.load_events_config(cfg_path)
+    cfg = events.load_events_config(cfg_path)
     action = args.events_action or "list"
     if action == "list":
-        upcoming = mr.compute_upcoming_events(cfg)
+        upcoming = events.compute_upcoming_events(cfg)
         if getattr(args, "json", False):
             for u in upcoming:
                 u["next_date"] = u["next_date"].isoformat()
@@ -54,14 +51,14 @@ def cmd_events(args):
                 )
         return 0
     elif action == "add":
-        mr.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date
+        events.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date
         ev_id = args.short.lower().replace(" ", "-")
-        events = [
+        kept = [
             e
             for e in cfg.get("events", [])
             if e.get("id") != ev_id and e.get("title") != args.title
         ]
-        events.append(
+        kept.append(
             {
                 "id": ev_id,
                 "title": args.title,
@@ -70,9 +67,9 @@ def cmd_events(args):
                 "category": args.category,
             }
         )
-        cfg["events"] = events
-        mr.save_events_config(cfg, cfg_path)
-        target_path = cfg_path or mr.get_default_events_path()
+        cfg["events"] = kept
+        events.save_events_config(cfg, cfg_path)
+        target_path = cfg_path or events.get_default_events_path()
         print(f"Saved event '{args.title}' ({args.date}) to {target_path}")
         return 0
     elif action == "remove":
@@ -86,10 +83,10 @@ def cmd_events(args):
             # D13 (v0.18.0): a no-match remove used to print "Removed 0 event(s)."
             # and exit 0 — a typo looked like success, and the config file was
             # rewritten for nothing. Fail friendly (exit 6) and leave the file alone.
-            raise mr.ConfigError(
+            raise ConfigError(
                 f"No event with id or title matching {args.target!r} — check `ak820 events list`."
             )
-        mr.save_events_config(cfg, cfg_path)
+        events.save_events_config(cfg, cfg_path)
         print(f"Removed {before - len(cfg['events'])} event(s).")
         return 0
     return 0
@@ -134,11 +131,11 @@ def _save_preview(img, path: str) -> None:
 
 def cmd_radar_preview(args):
     """`radar --save-preview DIR`: hero + board PNGs, no device."""
-    import milestone_radar as mr
+    from . import cards  # rendering domain: function-level per §10.2
 
     today = today_from_args(args)
-    cfg = mr.load_events_config(getattr(args, "config", None))
-    upcoming = mr.compute_upcoming_events(cfg, today=today)
+    cfg = events.load_events_config(getattr(args, "config", None))
+    upcoming = events.compute_upcoming_events(cfg, today=today)
     try:
         os.makedirs(args.save_preview, exist_ok=True)
     except (FileExistsError, NotADirectoryError) as exc:
@@ -157,25 +154,25 @@ def cmd_radar_preview(args):
         ) from exc
     p1 = os.path.join(args.save_preview, "radar_hero.png")
     p2 = os.path.join(args.save_preview, "radar_board.png")
-    _save_preview(mr.render_hero_card(upcoming, today=today), p1)
-    _save_preview(mr.render_board_card(upcoming, today=today), p2)
+    _save_preview(cards.render_hero_card(upcoming, today=today), p1)
+    _save_preview(cards.render_board_card(upcoming, today=today), p2)
     print(f"Saved previews to {p1} and {p2}")
     return 0
 
 
 def cmd_hud_preview(args):
-    import widgets
+    from . import hud  # rendering domain: function-level per §10.2
 
-    img = widgets.render_hud_card()
+    img = hud.render_hud_card()
     _save_preview(img, _prepare_preview_file(args.save_preview))
     print(f"Saved HUD preview to {args.save_preview}")
     return 0
 
 
 def cmd_media_preview(args):
-    import widgets
+    from . import hud  # rendering domain: function-level per §10.2
 
-    img = widgets.render_media_card()
+    img = hud.render_media_card()
     _save_preview(img, _prepare_preview_file(args.save_preview))
     print(f"Saved media preview to {args.save_preview}")
     return 0

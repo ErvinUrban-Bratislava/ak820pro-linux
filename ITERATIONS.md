@@ -29,6 +29,7 @@
 | `v0.23.0` | 2026-10-24 | Done | Optional numpy RGB565 fast path (§4.4): guarded `import numpy as _np` in `screen.py`, vectorized `_rgb565_numpy` (uint16 shifts, `astype("<u2")` little-endian) dispatched behind the unchanged `image_to_rgb565` signature with the v0.8.0 per-row loop kept as numpy-free fallback; worst case 128×128×255 frames **0.488 s → 0.008 s (~60×)**, byte-identical to the reference loop on gradient + noise; `pyproject` mypy override keeps the gate green on numpy-free CI without making numpy a dependency | `python3 -m unittest` 342/342 on both numpy-free system python (5 skips) and numpy venv (0 skips) + `scripts/lint.sh` GREEN + live `--dry-run` exit-8/version probes |
 | `v0.21.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §20): D17 `run <missing-command>` raw `FileNotFoundError` traceback → `FileMissingError` 8 / non-executable → `InvalidFileError` 9 (never 4 — 4 stays "device node rejected us") + D18 Ctrl+C during upload/wait/child dumped a traceback → `main()` catches `KeyboardInterrupt` → friendly line + exit 130 (watch loop keeps its clean local stop) + D19 exit-5 retry discarded the align result and streamed into an un-aligned pipe (m4 bypass) → shared `_ensure_aligned` helper, structurally test-locked + m14 signal death → 128+N (137 not 247) + m15/m16 undocumented exit-1 user errors → documented usage 2; README Exit Codes synced (rows 2/8/9 extended, new 130 row) | `python3 -m unittest` 316/316 + live `probe`/`--dry-run`/exit-2 probes via shim |
 | `v0.24.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §21): D20 successful upload exited **1** (`main()` returned `True`, bool-is-int → console wrapper `sys.exit(True)` → 1; both uploaded & dedup-skip now map to 0, shim `__main__` uses `sys.exit(main())`) + D21 bare `backlight` AttributeError traceback → required sub-action, usage 2 + D22 events-config shape/read/write violations (non-object, bad `events`, directory/unreadable/unwritable) → `ConfigError` 6 at the single load choke point + D23 `--save-preview` write failures (unwritable parent/target, unknown extension) → `InvalidFileError` 9 + D24 `--seconds/--watch/--dwell nan|inf` → `finite_float` argparse type, usage 2 + m17 closed-stdin keypress wait → False + m19 hand-edited `idle_color` → `ConfigError` 6; README rows 2/6/9 extended; m18/m20 queued | `python3 -m unittest` 373/373 + `scripts/lint.sh` GREEN + live exit-2/6/9 probes via shim |
+| `v0.25.0` | 2026-10-24 | Done | Architecture & Modularity (REVIEW.md §22): split the two top-level monoliths into single-responsibility package modules — `milestone_radar.py` (510 lines) → `ak820/events.py` (PIL-free events-config domain: D4/D5/m7/D22 validation + countdown rows) + `ak820/cards.py` (hero/board/custom renderers) + `ak820/palette.py` (THEMES urgency palette); `widgets.py` (359 lines) → `ak820/telemetry.py` (PIL-free sysfs/proc + playerctl/MPRIS probes) + `ak820/hud.py` (HUD/media card renderers); `ConfigError` moved into `ak820/errors.py` re-parented under `AK820Error` (exit 6 unchanged; `main()` now has ONE except branch and no shim import); both top-level files became identity shims and `ak820/` is now **self-contained** (zero imports of `milestone_radar`/`widgets`); all 21 package modules + 3 shims < 300 lines; 13-fixture render manifest byte-identical pre/post | `python3 -m unittest` 391/391 + `scripts/lint.sh` GREEN + byte-identical render parity + live events-CRUD/dry-run/preview/exit-2/6 probes via shim |
 
 ---
 
@@ -282,3 +283,41 @@
     `scripts/lint.sh` GREEN, live probes 2/6/9 via the `ak820_ctrl` shim.
     Queued follow-ups: m18 (config field-value coercion), m20 (no-op `events
     add` rewrite).
+
+- [x] **`v0.25.0`** — Architecture & Modularity: monolith decomposition (REVIEW.md §22):
+  - Split `milestone_radar.py` (510 lines) into `ak820/events.py` (events-config
+    domain: path resolution, D4/D5 date validation, m7/D22 shape checks, D7
+    thresholds, countdown rows — PIL-free), `ak820/cards.py` (hero/board/custom
+    128x128 renderers), `ak820/palette.py` (THEMES urgency palette).
+  - Split `widgets.py` (359 lines) into `ak820/telemetry.py` (sysfs/proc sampling
+    + playerctl/D-Bus MPRIS probes — PIL-free) and `ak820/hud.py` (HUD + media
+    card renderers, dicts injectable).
+  - Move `ConfigError` into `ak820/errors.py` as an `AK820Error` subclass
+    (exit 6); `cli.main()` drops its `milestone_radar` import and second
+    except branch; the invariant taxonomy test now covers ConfigError too.
+  - `milestone_radar.py` + `widgets.py` become identity re-export shims; no
+    `ak820/` module imports either anymore (package self-contained, §10.2).
+  - Every module strictly < 300 lines; renders byte-identical (sha256 manifest
+    over 13 fixtures: hero/board/custom states + HUD/media states).
+  - New `tests/test_modularity_v025.py` (18 offline tests, zero hardware).
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - **Shipped:** as above; suite 373 -> 391; `scripts/lint.sh` GREEN — moving the
+    probe code into `ak820/` brought 24 new ruff findings into the gate's scope,
+    all fixed (typing modernization, `contextlib.suppress`, `l`->`ln`) or justified
+    inline with the `state.py` noqa idiom (best-effort probe contract, PATH-probing
+    optional tools); render manifest byte-identical pre/post across all 13 fixtures;
+    live probes: events CRUD via `$AK820_EVENTS_PATH`, `--dry-run radar|card`,
+    `radar/hud/media --save-preview`, exit 6 (bad `--date`, corrupt cfg, no-match
+    remove), exit 2 (bare `backlight`). Found while probing: `events` rejects
+    `--config` while `radar` accepts it -> queued below with carried m18/m20.
+
+- [ ] **`v0.26.0`** — CLI surface parity + carried §21 minors:
+  - `events` subcommand gains `--config FILE` (v0.25.0 live probe: `events list
+    --config F` is rejected as unrecognized while `radar --config F` works —
+    every events-config consumer must accept the same override; today only
+    `$AK820_EVENTS_PATH` works for `events`).
+  - m18 (carried from §21): events-config field-value coercion — non-string
+    `title`/`date`/`category` values crash downstream consumers.
+  - m20 (carried from §21): `events add` with identical content rewrites the
+    file as a no-op — skip the write when nothing changed.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

@@ -102,9 +102,11 @@ def main(argv=None) -> int:
     DeviceDisconnectedError -> 75, argparse usage -> 2,
     KeyboardInterrupt -> 130 (D18: Ctrl+C, no traceback).
     Returns 0 on success (dedup skip included).
-    """
-    import milestone_radar as mr
 
+    v0.25.0: ConfigError joined the AK820Error taxonomy in `errors.py`, so the
+    single `except AK820Error` branch covers exit 6 too — `main()` no longer
+    reaches into the `milestone_radar` shim (the package is self-contained).
+    """
     args = build_parser().parse_args(argv)
     _configure_logging(args.verbose)
     try:
@@ -112,9 +114,6 @@ def main(argv=None) -> int:
     except AK820Error as exc:
         print(f"Error: {exc}", file=sys.stderr)
         sys.exit(exc.exit_code)
-    except mr.ConfigError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        sys.exit(mr.ConfigError.exit_code)
     except KeyboardInterrupt:
         # D18 (v0.21.0, §20): Ctrl+C during an upload, a keypress wait, or a
         # `run` child dumped a raw traceback. The §3.5 pipe flag is already

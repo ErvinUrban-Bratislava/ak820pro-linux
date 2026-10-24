@@ -9,7 +9,7 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.24.0"  # kept in lockstep with pyproject [project] version
+__version__ = "0.25.0"  # kept in lockstep with pyproject [project] version
 
 from .actions import (
     build_radar_frames,
@@ -36,6 +36,7 @@ from .discovery import (  # v0.19.0: sysfs discovery split out of transport (§1
 # --- v0.9.0: command layer (imports last: cli pulls in the whole stack) -------
 from .errors import (
     AK820Error,
+    ConfigError,  # v0.25.0: events-config error joined the taxonomy (§10)
     DeviceDisconnectedError,
     DeviceNotFoundError,
     FileMissingError,
@@ -123,6 +124,7 @@ __all__ = [
     "AK820Error",
     "AK820Pro",
     "AK820ProDevice",
+    "ConfigError",
     "DeviceDisconnectedError",
     "DeviceNotFoundError",
     "FileMissingError",

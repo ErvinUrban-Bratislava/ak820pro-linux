@@ -3,7 +3,7 @@
 Each renderer returns `(frames, delays_ms, label)` — the exact inputs
 `actions.upload_frames_to_screen` consumes — so `--dry-run` can produce the
 identical payload digest + chunk count without ever opening a hidraw node.
-Rendering-domain imports (`milestone_radar`, `widgets`) stay function-level
+Rendering-domain imports (`cards`, `hud`, `telemetry`) stay function-level
 per the §10.2 dependency rule; this module never touches protocol/transport.
 """
 
@@ -25,38 +25,38 @@ def render_upload(args):
 
 
 def render_radar(args):
-    import milestone_radar as mr
+    from . import events  # rendering domain: function-level per §10.2
 
     today = today_from_args(args)
-    cfg = mr.load_events_config(getattr(args, "config", None))
-    upcoming = mr.compute_upcoming_events(cfg, today=today)
+    cfg = events.load_events_config(getattr(args, "config", None))
+    upcoming = events.compute_upcoming_events(cfg, today=today)
     frames, delays = build_radar_frames(args.view, upcoming, today, slide_seconds=args.seconds)
     label = f"radar:{args.view}:{args.seconds}s:{today.isoformat()}"
     return frames, delays, label
 
 
 def render_card(args):
-    import milestone_radar as mr
+    from . import cards  # rendering domain: function-level per §10.2
 
-    img = mr.render_custom_card(args.title, args.value, args.sub, args.footer, args.theme)
+    img = cards.render_custom_card(args.title, args.value, args.sub, args.footer, args.theme)
     label = f"card:{args.title}:{args.value}:{args.sub}:{args.footer}:{args.theme}"
     return [image_to_rgb565(img)], None, label
 
 
 def render_hud(args):
-    import widgets
+    from . import hud, telemetry  # render + probe seams: function-level per §10.2
 
-    stats = widgets.get_system_stats()
-    img = widgets.render_hud_card(stats)
+    stats = telemetry.get_system_stats()
+    img = hud.render_hud_card(stats)
     label = f"hud:{stats['cpu_pct']}:{stats['ram_pct']}:{stats['temp_c']}:{stats['time']}"
     return [image_to_rgb565(img)], None, label
 
 
 def render_media(args):
-    import widgets
+    from . import hud, telemetry  # render + probe seams: function-level per §10.2
 
-    media = widgets.get_media_status()
-    img = widgets.render_media_card(media)
+    media = telemetry.get_media_status()
+    img = hud.render_media_card(media)
     label = f"media:{media['status']}:{media['title']}:{media['artist']}"
     return [image_to_rgb565(img)], None, label
 

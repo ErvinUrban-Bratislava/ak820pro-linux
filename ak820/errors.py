@@ -11,6 +11,23 @@ class AK820Error(Exception):
     exit_code = 1
 
 
+class ConfigError(AK820Error):
+    """Raised when the events config contains invalid data (Defects D4/D5).
+
+    Mapped to exit code 6 in `ak820.cli.main()` so a single typo in
+    events.json fails the daily systemd timer with a friendly message
+    instead of a raw ValueError traceback.
+
+    v0.25.0 (modularity): moved here from `milestone_radar.py` — the exit-code
+    taxonomy lives in exactly one module — and re-parented under AK820Error,
+    so main()'s single `except AK820Error` branch and the invariant test that
+    maps every error class to its exit code both cover it automatically.
+    `milestone_radar.ConfigError` stays the same class object via re-export.
+    """
+
+    exit_code = 6
+
+
 class ProtocolError(AK820Error):
     """Device answered with a malformed/unexpected reply (e.g. ACK magic
     mismatch — minor defect m3), or the data pipe will not align. The transfer

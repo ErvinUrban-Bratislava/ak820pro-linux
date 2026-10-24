@@ -1,8 +1,8 @@
 """Device-facing actions: upload pipeline, RTC sync, radar frame building (v0.9.0).
 
 Extracted from `ak820_ctrl.py` so `cli.py` stays a thin dispatch layer (§10.5).
-Depends only on {protocol, device, screen, state, errors} + milestone_radar
-(rendering domain, function-level import — never on protocol/device paths).
+Depends only on {protocol, device, screen, state, errors} + cards (rendering
+domain, function-level import — never on protocol/device paths).
 """
 
 import hashlib
@@ -185,10 +185,10 @@ def build_radar_frames(view: str, upcoming: list, today, slide_seconds: float = 
     in 1ms SysTick ticks (~300ms total per frame including SPI->LCD blit).
     Repeating a static slide N times holds it steady on screen for N * ~0.30s.
     """
-    import milestone_radar as mr
+    from . import cards  # rendering domain: function-level per §10.2
 
-    hero_rgb = image_to_rgb565(mr.render_hero_card(upcoming, today=today))
-    board_rgb = image_to_rgb565(mr.render_board_card(upcoming, today=today))
+    hero_rgb = image_to_rgb565(cards.render_hero_card(upcoming, today=today))
+    board_rgb = image_to_rgb565(cards.render_board_card(upcoming, today=today))
     frames_per_slide = max(1, min(60, round(slide_seconds / 0.30)))
 
     if view == "hero":
