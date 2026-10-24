@@ -16,6 +16,7 @@ import json
 import os
 import tempfile
 
+from . import configvalues
 from .errors import ConfigError
 
 
@@ -122,7 +123,10 @@ def load_events_config(config_path: str | None = None) -> dict:
                     f"Events config {path}: events[{idx}] must be an object, "
                     f"got {type(ev).__name__}."
                 )
-    return cfg
+    # m18 (v0.26.0, §21): value-type coercion at the same choke point as the
+    # D22 shape checks — wrong-typed field values (int title, null category,
+    # stray {placeholder} note, string idle_mode) never reach a consumer.
+    return configvalues.coerce_config_values(cfg, path)
 
 
 def save_events_config(cfg: dict, config_path: str | None = None):

@@ -53,11 +53,8 @@ def cmd_events(args):
     elif action == "add":
         events.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date
         ev_id = args.short.lower().replace(" ", "-")
-        kept = [
-            e
-            for e in cfg.get("events", [])
-            if e.get("id") != ev_id and e.get("title") != args.title
-        ]
+        old_events = cfg.get("events", [])
+        kept = [e for e in old_events if e.get("id") != ev_id and e.get("title") != args.title]
         kept.append(
             {
                 "id": ev_id,
@@ -67,9 +64,15 @@ def cmd_events(args):
                 "category": args.category,
             }
         )
+        target_path = cfg_path or events.get_default_events_path()
+        if kept == old_events:
+            # m20 (v0.26.0, §21): an identical re-add used to rewrite the file
+            # as a byte-for-byte no-op — mtime churn for timers/backups and a
+            # misleading "Saved" line. Nothing changed -> nothing written.
+            print(f"Event '{args.title}' ({args.date}) already up to date in {target_path}")
+            return 0
         cfg["events"] = kept
         events.save_events_config(cfg, cfg_path)
-        target_path = cfg_path or events.get_default_events_path()
         print(f"Saved event '{args.title}' ({args.date}) to {target_path}")
         return 0
     elif action == "remove":

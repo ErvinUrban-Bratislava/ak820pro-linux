@@ -1438,13 +1438,19 @@ reproduced live through the `ak820_ctrl` shim before a line of code changed.
 - `--dry-run` + `--save-preview` together: the preview acts, the dry-run
   notice is skipped — preview is the more specific intent (unchanged from
   §20.3's dry-run scoping).
-- **m18 (queued)** — non-string *field values* inside otherwise-valid event
-  objects (`"title": 123` → `.lower()` AttributeError; `note` with a stray
+- **m18 (closed v0.26.0)** — non-string *field values* inside otherwise-valid
+  event objects (`"title": 123` → `.lower()` AttributeError; `note` with a stray
   `{placeholder}` → `format` KeyError; `idle_mode` as a string). Shape is
-  locked (D22); value-type coercion is the natural follow-up.
-- **m20 (queued)** — `events add` rewrites the config even when the added
-  event is byte-identical to an existing entry (id/title dedup already
-  prevents duplicates, so this is cosmetic).
+  locked (D22); value-type coercion shipped in `ak820/configvalues.py`, called
+  at the same `load_events_config` choke point: JSON scalars coerce losslessly
+  (numbers/bools → text, numeric strings/integral floats → int for the idle
+  backlight fields), `null`/list/object values and `note` placeholders other
+  than `{years}` → `ConfigError` (6) naming the `events[i].field` location.
+- **m20 (closed v0.26.0)** — `events add` rewrites the config even when the
+  added event is byte-identical to an existing entry (id/title dedup already
+  prevents duplicates, so this is cosmetic). v0.26.0: the write is skipped when
+  the rebuilt event list equals the loaded one — "already up to date" line,
+  file bytes and mtime untouched.
 
 ### 21.4 Verification
 

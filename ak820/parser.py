@@ -28,6 +28,11 @@ def finite_float(value: str) -> float:
     return num
 
 
+_CONFIG_HELP = (
+    "Path to events JSON config (default: ~/.config/ak820/events.json or $AK820_EVENTS_PATH)"
+)
+
+
 def build_parser():
     """Identical argparse tree to the pre-0.9.0 ak820_ctrl CLI (flag-for-flag)."""
     from .backlight import SHOWCASE_PRESETS
@@ -75,10 +80,7 @@ def build_parser():
     p.add_argument(
         "--save-preview", help="Save rendered PNG preview(s) to directory instead of uploading"
     )
-    p.add_argument(
-        "--config",
-        help="Path to events JSON config (default: ~/.config/ak820/events.json or $AK820_EVENTS_PATH)",
-    )
+    p.add_argument("--config", help=_CONFIG_HELP)
     p.add_argument(
         "--sync-clock", action="store_true", help="Also synchronize the keyboard RTC clock"
     )
@@ -136,14 +138,19 @@ def build_parser():
     )
 
     p = sub.add_parser("events", help="List, add, or remove family milestones")
-    p.add_argument(
-        "--config",
-        help="Path to events JSON config (default: ~/.config/ak820/events.json or $AK820_EVENTS_PATH)",
-    )
+    p.add_argument("--config", help=_CONFIG_HELP)
     ev = p.add_subparsers(dest="events_action", required=False)
+    # v0.26.0 CLI surface parity: every events-config consumer accepts --config
+    # wherever `radar` does — before AND after the sub-action (`events list
+    # --config F` used to be rejected as unrecognized, exit 2). SUPPRESS keeps
+    # the parent's value when the flag precedes the sub-action: argparse parses
+    # the sub-action into a fresh namespace and copies it over the parent's, so
+    # a None default here would silently clobber `events --config F list`.
     ev_l = ev.add_parser("list", help="List upcoming milestones sorted by days left")
     ev_l.add_argument("--json", action="store_true", help="Output JSON for AI tools")
+    ev_l.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
     ev_a = ev.add_parser("add", help="Add or update a milestone in ak820_events.json")
+    ev_a.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
     ev_a.add_argument(
         "--title", required=True, help='Full event title (e.g. "Daughter\'s Birthday")'
     )
@@ -158,6 +165,7 @@ def build_parser():
     )
     ev_r = ev.add_parser("remove", help="Remove a milestone by id or title")
     ev_r.add_argument("target", help="Event id or title to remove")
+    ev_r.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
 
     sub.add_parser("sync-clock", help="Sync system date & time to keyboard RTC")
     sub.add_parser("probe", help="Detect keyboard HID interfaces")

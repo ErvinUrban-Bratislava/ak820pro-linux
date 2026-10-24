@@ -29,6 +29,7 @@
 | `v0.23.0` | 2026-10-24 | Done | Optional numpy RGB565 fast path (§4.4): guarded `import numpy as _np` in `screen.py`, vectorized `_rgb565_numpy` (uint16 shifts, `astype("<u2")` little-endian) dispatched behind the unchanged `image_to_rgb565` signature with the v0.8.0 per-row loop kept as numpy-free fallback; worst case 128×128×255 frames **0.488 s → 0.008 s (~60×)**, byte-identical to the reference loop on gradient + noise; `pyproject` mypy override keeps the gate green on numpy-free CI without making numpy a dependency | `python3 -m unittest` 342/342 on both numpy-free system python (5 skips) and numpy venv (0 skips) + `scripts/lint.sh` GREEN + live `--dry-run` exit-8/version probes |
 | `v0.21.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §20): D17 `run <missing-command>` raw `FileNotFoundError` traceback → `FileMissingError` 8 / non-executable → `InvalidFileError` 9 (never 4 — 4 stays "device node rejected us") + D18 Ctrl+C during upload/wait/child dumped a traceback → `main()` catches `KeyboardInterrupt` → friendly line + exit 130 (watch loop keeps its clean local stop) + D19 exit-5 retry discarded the align result and streamed into an un-aligned pipe (m4 bypass) → shared `_ensure_aligned` helper, structurally test-locked + m14 signal death → 128+N (137 not 247) + m15/m16 undocumented exit-1 user errors → documented usage 2; README Exit Codes synced (rows 2/8/9 extended, new 130 row) | `python3 -m unittest` 316/316 + live `probe`/`--dry-run`/exit-2 probes via shim |
 | `v0.24.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §21): D20 successful upload exited **1** (`main()` returned `True`, bool-is-int → console wrapper `sys.exit(True)` → 1; both uploaded & dedup-skip now map to 0, shim `__main__` uses `sys.exit(main())`) + D21 bare `backlight` AttributeError traceback → required sub-action, usage 2 + D22 events-config shape/read/write violations (non-object, bad `events`, directory/unreadable/unwritable) → `ConfigError` 6 at the single load choke point + D23 `--save-preview` write failures (unwritable parent/target, unknown extension) → `InvalidFileError` 9 + D24 `--seconds/--watch/--dwell nan|inf` → `finite_float` argparse type, usage 2 + m17 closed-stdin keypress wait → False + m19 hand-edited `idle_color` → `ConfigError` 6; README rows 2/6/9 extended; m18/m20 queued | `python3 -m unittest` 373/373 + `scripts/lint.sh` GREEN + live exit-2/6/9 probes via shim |
+| `v0.26.0` | 2026-10-24 | Done | CLI surface parity + carried §21 minors: `events list\|add\|remove` accept `--config F` **before and after** the sub-action (`argparse.SUPPRESS` sub-action defaults keep the parent value — argparse copies the sub-action namespace over the parent's; sub-action position wins) + m18 closed via new `ak820/configvalues.py` — events-config field-value coercion at the `load_events_config` choke point (D22's value half: scalars coerce losslessly, null/list/object + non-`{years}` note placeholders → `ConfigError` 6 naming `events[i].field`; `"idle_mode": "1"` → 1) + m20 closed — identical `events add` skips the write ("already up to date", bytes + mtime untouched); README exit-6 row + events `--config` example synced | `python3 -m unittest` 422/422 + `scripts/lint.sh` GREEN + live parity/exit-6/mtime-stable no-op probes via shim |
 | `v0.25.0` | 2026-10-24 | Done | Architecture & Modularity (REVIEW.md §22): split the two top-level monoliths into single-responsibility package modules — `milestone_radar.py` (510 lines) → `ak820/events.py` (PIL-free events-config domain: D4/D5/m7/D22 validation + countdown rows) + `ak820/cards.py` (hero/board/custom renderers) + `ak820/palette.py` (THEMES urgency palette); `widgets.py` (359 lines) → `ak820/telemetry.py` (PIL-free sysfs/proc + playerctl/MPRIS probes) + `ak820/hud.py` (HUD/media card renderers); `ConfigError` moved into `ak820/errors.py` re-parented under `AK820Error` (exit 6 unchanged; `main()` now has ONE except branch and no shim import); both top-level files became identity shims and `ak820/` is now **self-contained** (zero imports of `milestone_radar`/`widgets`); all 21 package modules + 3 shims < 300 lines; 13-fixture render manifest byte-identical pre/post | `python3 -m unittest` 391/391 + `scripts/lint.sh` GREEN + byte-identical render parity + live events-CRUD/dry-run/preview/exit-2/6 probes via shim |
 
 ---
@@ -311,7 +312,7 @@
     remove), exit 2 (bare `backlight`). Found while probing: `events` rejects
     `--config` while `radar` accepts it -> queued below with carried m18/m20.
 
-- [ ] **`v0.26.0`** — CLI surface parity + carried §21 minors:
+- [x] **`v0.26.0`** — CLI surface parity + carried §21 minors:
   - `events` subcommand gains `--config FILE` (v0.25.0 live probe: `events list
     --config F` is rejected as unrecognized while `radar --config F` works —
     every events-config consumer must accept the same override; today only
@@ -320,4 +321,38 @@
     `title`/`date`/`category` values crash downstream consumers.
   - m20 (carried from §21): `events add` with identical content rewrites the
     file as a no-op — skip the write when nothing changed.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - **Shipped:** all three closed; suite 391 -> 422; `scripts/lint.sh` GREEN.
+    `--config` accepted before AND after `list|add|remove` via
+    `argparse.SUPPRESS` defaults on the sub-actions (argparse copies the
+    sub-action namespace over the parent's — a None default would silently
+    clobber `events --config F list`; sub-action position wins on conflict).
+    m18 shipped as new `ak820/configvalues.py` (D22's value half at the same
+    `load_events_config` choke point): JSON scalars coerce losslessly, null/
+    list/object values + non-`{years}` note placeholders -> ConfigError 6
+    naming `events[i].field`. m20: identical re-add prints "already up to
+    date", file bytes + mtime untouched. README exit-6 row + events `--config`
+    example synced; `tests/test_cli_parity_v026.py` (31 offline tests, zero
+    hardware). Live probes: parity both positions + precedence, int title
+    renders "123", bad placeholder/null title/garbage idle_mode exit 6,
+    no-op add mtime-stable. Found while probing: device-bound consumers
+    (`backlight --save`, idle restore) still ignore `--config` -> queued below.
+
+- [ ] **`v0.27.0`** — Config-override parity on the device-bound surface +
+    `events add --note`:
+  - `backlight set --save` / idle restore ignore the `--config` override
+    (v0.26.0 finding): `get_idle_backlight_cfg()`/`save_idle_backlight_cfg()`
+    call `load_events_config()`/`save_events_config()` with no path and the
+    `backlight`/`status`/`run` subcommands expose no `--config` flag at all —
+    they honor only `$AK820_EVENTS_PATH`. Thread an optional `config_path`
+    through both functions and add the flag so the v0.26.0 invariant ("every
+    events-config consumer accepts the same override") holds everywhere.
+  - `events add` cannot write `note` — the one event field that requires
+    hand-editing JSON. Add `--note TEXT` validated by the shipped
+    `configvalues` `{years}`-only placeholder rule (same ConfigError 6), and
+    make `events add` preserve an existing entry's `note` when the flag is
+    omitted (today a re-add silently drops it).
+  - Decide + document the `compute_upcoming_events` library-seam contract:
+    hand-injected dicts bypass `configvalues` coercion — either document the
+    trust boundary in the docstring or add a defensive guard.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
