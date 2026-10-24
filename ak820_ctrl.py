@@ -97,6 +97,5 @@ from ak820.transport import (  # noqa: F401
     wait_for_keypress,
 )
 
-
 if __name__ == "__main__":
     main()

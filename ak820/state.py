@@ -10,6 +10,7 @@ dedup fully testable without touching ~/.cache.
 worst-case ~8 MB upload never forces an extra `bytes(payload)` copy.
 """
 
+import contextlib
 import datetime
 import hashlib
 import json
@@ -32,12 +33,12 @@ def _read_state() -> dict:
     path = get_state_path()
     if os.path.exists(path):
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 doc = json.load(f)
             if isinstance(doc, dict):
                 return doc
-        except Exception:
-            pass
+        except Exception:  # noqa: BLE001, S110 — fail-dirty contract: any
+            pass  # corrupt/unreadable state doc reads as {} (never crashes a caller)
     return {}
 
 
@@ -56,10 +57,8 @@ def _write_state(doc: dict) -> None:
             json.dump(doc, f, indent=2)
         os.replace(tmp_path, path)
     except BaseException:
-        try:
+        with contextlib.suppress(OSError):
             os.unlink(tmp_path)
-        except OSError:
-            pass
         raise
 
 

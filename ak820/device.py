@@ -160,26 +160,23 @@ class AK820Pro:
         self.send_feature(_cmd_packet(0x02, enable=False))
         self.handshake(post_delay=0.10)
         self.drain_data_acks()
-        acked = (coarse_burst > 0 and fine_pkt > 0 and ack3 is not None)
+        acked = coarse_burst > 0 and fine_pkt > 0 and ack3 is not None
         return (coarse_burst, fine_pkt), acked
 
     # --- high-level operations -------------------------------------------------
-    def upload_frames(self, frames, delays_ms=None, align=True, progress=None,
-                      deadline_s=None):
+    def upload_frames(self, frames, delays_ms=None, align=True, progress=None, deadline_s=None):
         """Build the payload (D3 guard), align, stream with strict ACK
         accounting (D2/m3), then SAVE. Returns True only on a complete transfer."""
-        payload_bytes, num_frames, total_chunks = build_payload(frames, delays_ms)
+        payload_bytes, _num_frames, total_chunks = build_payload(frames, delays_ms)
         if align:
-            # m4: an un-aligned pipe is the exact desync state alignment exists
-            # to prevent — retry once, then abort instead of streaming into it.
-            if not self.align_data_pipe()[1]:
-                if not self.align_data_pipe()[1]:
-                    raise ProtocolError(
-                        "Data pipe will not align after 2 attempts — "
-                        "check the cable / re-seat the device."
-                    )
-        stream_payload(self, payload_bytes, total_chunks, progress=progress,
-                       deadline_s=deadline_s)
+            # m4: an un-aligned pipe is the exact desync state alignment exists to
+            # prevent — retry once (`and` short-circuits attempt 2), then abort.
+            aligned = self.align_data_pipe()[1]
+            if not aligned and not self.align_data_pipe()[1]:
+                raise ProtocolError(
+                    "Data pipe will not align after 2 attempts — check the cable / re-seat the device."
+                )
+        stream_payload(self, payload_bytes, total_chunks, progress=progress, deadline_s=deadline_s)
         return True
 
     def sync_clock(self, now=None):
@@ -226,8 +223,9 @@ class AK820Pro:
         print("Clock synced successfully!")
 
 
-def stream_payload(dev, payload_bytes, total_chunks, progress=None,
-                   deadline_s=None, clock=time.monotonic):
+def stream_payload(
+    dev, payload_bytes, total_chunks, progress=None, deadline_s=None, clock=time.monotonic
+):
     """START -> IMAGE_CFG -> per-chunk stream with strict ACK accounting -> SAVE.
 
     Works on any duck-typed device exposing send_feature/handshake/
@@ -261,8 +259,10 @@ def stream_payload(dev, payload_bytes, total_chunks, progress=None,
 
     # Step 3: Stream 4096-byte chunks and strictly await per-chunk ACK
     if deadline_s is None:
-        deadline_s = UPLOAD_BASE_DEADLINE_S + total_chunks * (
-            CHUNK_ACK_TIMEOUT_MS / 1000.0) * CHUNK_DEADLINE_FACTOR
+        deadline_s = (
+            UPLOAD_BASE_DEADLINE_S
+            + total_chunks * (CHUNK_ACK_TIMEOUT_MS / 1000.0) * CHUNK_DEADLINE_FACTOR
+        )
     started = clock()
     acks = 0
     for idx in range(total_chunks):
@@ -274,7 +274,7 @@ def stream_payload(dev, payload_bytes, total_chunks, progress=None,
                 acks=acks,
                 total=total_chunks,
             )
-        chunk = payload_bytes[idx * CHUNK_SIZE:(idx + 1) * CHUNK_SIZE]
+        chunk = payload_bytes[idx * CHUNK_SIZE : (idx + 1) * CHUNK_SIZE]
         ack = dev.send_data_chunk(chunk, timeout_ms=CHUNK_ACK_TIMEOUT_MS)
         if ack is not None:
             acks += 1

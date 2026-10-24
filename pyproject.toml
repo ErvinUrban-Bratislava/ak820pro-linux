@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ak820pro-linux"
-version = "0.21.0"
+version = "0.22.0"
 description = "Native Linux CLI tool to control the 128x128 TFT screen, animated GIFs, RGB backlighting, and RTC clock on Ajazz AK820 Pro"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -44,6 +44,25 @@ dependencies = [
 Homepage = "https://github.com/ErvinUrban-Bratislava/ak820pro-linux"
 Repository = "https://github.com/ErvinUrban-Bratislava/ak820pro-linux.git"
 Issues = "https://github.com/ErvinUrban-Bratislava/ak820pro-linux/issues"
+
+# --- Static Analysis Gate baseline (v0.22.0, REVIEW.md §14.2 / ITERATIONS v0.22) ---
+# Single source of truth: local `scripts/lint.sh` and the CI `lint` job both read
+# these sections, so local and CI can never drift apart. Behavior-neutral only.
+[tool.ruff]
+line-length = 100
+target-version = "py310"  # mirrors requires-python >= 3.10
+
+[tool.ruff.lint]
+# Curated rule families: pyflakes + isort + pyupgrade + bandit-lite + a few
+# readability families. Every finding in ak820/ + ak820_ctrl.py is fixed or
+# justified inline (noqa with reason), never blanket-ignored.
+select = ["E4", "E7", "E9", "F", "I", "UP", "S", "BLE", "PIE", "PLW", "RUF", "SIM"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["ak820"]
+mypy_path = "."          # root shims (milestone_radar, widgets) resolve for typing
+follow_imports = "silent"  # gate reports ak820/ only; followed modules supply types
 
 [project.scripts]
 ak820 = "ak820.cli:main"

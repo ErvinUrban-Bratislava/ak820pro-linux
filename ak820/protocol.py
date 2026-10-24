@@ -14,7 +14,7 @@ VID = 0x0C45
 PIDS = [0x800A, 0x8009]
 
 USAGE_PAGE_CONTROL = 0xFF13  # Interface 3: feature report commands & clock sync
-USAGE_PAGE_DATA = 0xFF68     # Interface 2: 4096-byte bulk image chunks + 64B ACK
+USAGE_PAGE_DATA = 0xFF68  # Interface 2: 4096-byte bulk image chunks + 64B ACK
 
 SCREEN_WIDTH = 128
 SCREEN_HEIGHT = 128
@@ -39,7 +39,7 @@ CHUNK_DEADLINE_FACTOR = 2.0
 MAX_WRITE_RETRIES = 64
 
 # Per-chunk ACK on the data pipe starts with this magic (FINDINGS.md).
-ACK_MAGIC = b"\x01\x5A\x02"
+ACK_MAGIC = b"\x01\x5a\x02"
 
 # Linux hidraw ioctl constants for 65-byte buffer ([0x00 report_id] + 64-byte payload)
 HIDIOCSFEATURE_65 = 0xC0000000 | (65 << 16) | (ord("H") << 8) | 0x06

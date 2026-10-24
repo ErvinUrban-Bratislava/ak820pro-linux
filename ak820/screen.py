@@ -82,8 +82,8 @@ def image_to_rgb565(img) -> bytes:
     pack = _U16.pack
     out = bytearray(row_out * SCREEN_HEIGHT)
     for y in range(SCREEN_HEIGHT):
-        row = raw[y * row_in:(y + 1) * row_in]
-        out[y * row_out:(y + 1) * row_out] = b"".join(
+        row = raw[y * row_in : (y + 1) * row_in]
+        out[y * row_out : (y + 1) * row_out] = b"".join(
             pack(((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3))
             for r, g, b in zip(row[0::3], row[1::3], row[2::3])
         )
@@ -119,8 +119,8 @@ def load_frames_from_file(path: str, fit_mode: str = "fill", max_frames: int = M
         fitted = fit_image(img.convert("RGB"), fit_mode)
         return [image_to_rgb565(fitted)], None
 
-    frames = []
-    delays = []
+    frames: list = []
+    delays: list = []
     canvas = Image.new("RGBA", img.size, (0, 0, 0, 255))
 
     try:

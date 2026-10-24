@@ -9,12 +9,35 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.21.0"  # kept in lockstep with pyproject [project] version
+__version__ = "0.22.0"  # kept in lockstep with pyproject [project] version
 
+from .actions import (
+    build_radar_frames,
+    sync_clock,
+    upload_frames_to_screen,
+    upload_to_screen,
+)
+from .backlight import (
+    SHOWCASE_PRESETS,
+    apply_idle_backlight,
+    dispatch_backlight,
+    get_idle_backlight_cfg,
+    list_backlight_presets,
+    save_idle_backlight_cfg,
+    set_backlight,
+)
+from .cli import build_parser, main, run_watch_loop
 from .device import AK820Pro, stream_payload
+from .discovery import (  # v0.19.0: sysfs discovery split out of transport (§18)
+    find_hidraw_devices,
+    find_keyboard_hidraw,
+)
+
+# --- v0.9.0: command layer (imports last: cli pulls in the whole stack) -------
 from .errors import (
     AK820Error,
     DeviceDisconnectedError,
+    DeviceNotFoundError,
     FileMissingError,
     InvalidFileError,
     PermissionDeniedError,
@@ -63,104 +86,82 @@ from .state import (
     get_state_path,
     save_payload_hash,
 )
-from .discovery import (  # v0.19.0: sysfs discovery split out of transport (§18)
-    find_hidraw_devices,
-    find_keyboard_hidraw,
-)
+from .status import run_backlight_demo, set_status_backlight
 from .transport import (
+    AK820ProDevice,
     HidTransport,
     LinuxHidrawTransport,
+    wait_for_keypress,
 )
-
-# --- v0.9.0: command layer (imports last: cli pulls in the whole stack) -------
-from .errors import DeviceNotFoundError
-from .transport import AK820ProDevice, wait_for_keypress
-from .actions import (
-    build_radar_frames,
-    sync_clock,
-    upload_frames_to_screen,
-    upload_to_screen,
-)
-from .backlight import (
-    SHOWCASE_PRESETS,
-    apply_idle_backlight,
-    dispatch_backlight,
-    get_idle_backlight_cfg,
-    list_backlight_presets,
-    save_idle_backlight_cfg,
-    set_backlight,
-)
-from .status import run_backlight_demo, set_status_backlight
-from .cli import build_parser, main, run_watch_loop
 
 __all__ = [
-    "__version__",
-    "AK820Error",
-    "AK820Pro",
-    "AK820ProDevice",
-    "DeviceNotFoundError",
-    "FileMissingError",
-    "InvalidFileError",
-    "SHOWCASE_PRESETS",
-    "apply_idle_backlight",
-    "build_parser",
-    "build_radar_frames",
-    "dispatch_backlight",
-    "get_idle_backlight_cfg",
-    "list_backlight_presets",
-    "main",
-    "run_backlight_demo",
-    "run_watch_loop",
-    "save_idle_backlight_cfg",
-    "set_backlight",
-    "set_status_backlight",
-    "sync_clock",
-    "upload_frames_to_screen",
-    "upload_to_screen",
-    "wait_for_keypress",
     "ACK_MAGIC",
     "CHUNK_ACK_TIMEOUT_MS",
     "CHUNK_SIZE",
     "CMD_DELAY",
     "DEFAULT_STATE_PATH",
-    "DeviceDisconnectedError",
     "FONT_BOLD_PATHS",
     "FONT_MONO_PATHS",
     "FONT_NARROW_PATHS",
     "FONT_REGULAR_PATHS",
     "HIDIOCGFEATURE_65",
     "HIDIOCSFEATURE_65",
-    "HidTransport",
     "IMG_CFG_SETUP_DELAY",
     "LIGHT_MODES",
-    "LinuxHidrawTransport",
     "MAX_FRAMES",
     "MAX_LIGHT_MODE",
     "PIDS",
-    "PermissionDeniedError",
-    "ProtocolError",
     "RGB565_FRAME_BYTES",
     "SCREEN_H",
     "SCREEN_HEIGHT",
     "SCREEN_W",
     "SCREEN_WIDTH",
+    "SHOWCASE_PRESETS",
     "USAGE_PAGE_CONTROL",
     "USAGE_PAGE_DATA",
-    "UploadIncompleteError",
     "VID",
+    "AK820Error",
+    "AK820Pro",
+    "AK820ProDevice",
+    "DeviceDisconnectedError",
+    "DeviceNotFoundError",
+    "FileMissingError",
+    "HidTransport",
+    "InvalidFileError",
+    "LinuxHidrawTransport",
+    "PermissionDeniedError",
+    "ProtocolError",
+    "UploadIncompleteError",
+    "__version__",
     "_build_gif_header",
     "_cmd_packet",
+    "apply_idle_backlight",
+    "build_parser",
     "build_payload",
+    "build_radar_frames",
     "check_and_record_payload_hash",
-    "fit_image",
+    "dispatch_backlight",
     "find_hidraw_devices",
     "find_keyboard_hidraw",
+    "fit_image",
+    "get_idle_backlight_cfg",
     "get_state_path",
     "image_to_rgb565",
+    "list_backlight_presets",
     "load_frames_from_file",
+    "main",
     "parse_hex_color",
     "parse_mode",
     "parse_usage_page",
+    "run_backlight_demo",
+    "run_watch_loop",
+    "save_idle_backlight_cfg",
     "save_payload_hash",
+    "set_backlight",
+    "set_status_backlight",
     "stream_payload",
+    "sync_clock",
+    "upload_frames_to_screen",
+    "upload_to_screen",
+    "wait_for_keypress",
 ]

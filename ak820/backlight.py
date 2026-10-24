@@ -6,11 +6,13 @@ errors} + milestone_radar for the events-config persistence of the idle preset.
 
 import sys
 import time
+from typing import Any
 
 from .protocol import CMD_DELAY, _cmd_packet, parse_hex_color, parse_mode
-from .transport import wait_for_keypress
 
-SHOWCASE_PRESETS = [
+# Heterogeneous preset records (str/int/bool values) — `Any` keeps the dict
+# values usable at call sites (status.py demo) without lying about types.
+SHOWCASE_PRESETS: list[dict[str, Any]] = [
     {
         "key": "warm-white",
         "name": "Warm White",
@@ -186,17 +188,29 @@ def apply_idle_backlight(dev):
     preset = next((p for p in SHOWCASE_PRESETS if p["key"] == preset_key), None)
     if preset:
         r, g, b = parse_hex_color(preset["color"])
-        set_backlight(dev, preset["mode"], r, g, b, preset["rainbow"], preset["brightness"], preset["speed"])
+        set_backlight(
+            dev, preset["mode"], r, g, b, preset["rainbow"], preset["brightness"], preset["speed"]
+        )
     else:
         r, g, b = parse_hex_color(cfg["color"])
-        set_backlight(dev, cfg["mode"], r, g, b, cfg["rainbow"], cfg["brightness"], cfg["speed"], cfg["direction"])
+        set_backlight(
+            dev,
+            cfg["mode"],
+            r,
+            g,
+            b,
+            cfg["rainbow"],
+            cfg["brightness"],
+            cfg["speed"],
+            cfg["direction"],
+        )
 
 
 def list_backlight_presets():
     print(f"{'PRESET KEY':<18} {'NAME':<20} {'MODE':<6} {'COLOR':<10} {'DESCRIPTION'}")
     print("-" * 80)
     for p in SHOWCASE_PRESETS:
-        print(f"{p['key']:<18} {p['name']:<20} {str(p['mode']):<6} {p['color']:<10} {p['desc']}")
+        print(f"{p['key']:<18} {p['name']:<20} {p['mode']!s:<6} {p['color']:<10} {p['desc']}")
     from .protocol import LIGHT_MODES
 
     print("\nSupported mode names:", ", ".join(LIGHT_MODES.keys()))
@@ -221,13 +235,24 @@ def dispatch_backlight(dev, args):
             p = next(x for x in SHOWCASE_PRESETS if x["key"] == args.preset)
             r, g, b = parse_hex_color(p["color"])
             set_backlight(
-                dev, mode=p["mode"], r=r, g=g, b=b, rainbow=p["rainbow"],
-                brightness=p["brightness"], speed=p["speed"], save=args.save,
+                dev,
+                mode=p["mode"],
+                r=r,
+                g=g,
+                b=b,
+                rainbow=p["rainbow"],
+                brightness=p["brightness"],
+                speed=p["speed"],
+                save=args.save,
             )
             if args.save:
                 save_idle_backlight_cfg(
-                    idle_preset=p["key"], mode=p["mode"], color=p["color"],
-                    rainbow=p["rainbow"], brightness=p["brightness"], speed=p["speed"],
+                    idle_preset=p["key"],
+                    mode=p["mode"],
+                    color=p["color"],
+                    rainbow=p["rainbow"],
+                    brightness=p["brightness"],
+                    speed=p["speed"],
                 )
             print(f"Applied preset '{p['name']}' (`{p['key']}`).")
         else:
@@ -244,14 +269,27 @@ def dispatch_backlight(dev, args):
                 print(f"Error: {exc}", file=sys.stderr)  # m16: exit 2, see above
                 sys.exit(2)
             set_backlight(
-                dev, mode=mode_val, r=r, g=g, b=b, rainbow=args.rainbow,
-                brightness=args.brightness, speed=args.speed,
-                direction=args.direction, save=args.save,
+                dev,
+                mode=mode_val,
+                r=r,
+                g=g,
+                b=b,
+                rainbow=args.rainbow,
+                brightness=args.brightness,
+                speed=args.speed,
+                direction=args.direction,
+                save=args.save,
             )
             if args.save:
                 save_idle_backlight_cfg(
-                    idle_preset="custom", mode=mode_val, color=args.color,
-                    rainbow=args.rainbow, brightness=args.brightness,
-                    speed=args.speed, direction=args.direction,
+                    idle_preset="custom",
+                    mode=mode_val,
+                    color=args.color,
+                    rainbow=args.rainbow,
+                    brightness=args.brightness,
+                    speed=args.speed,
+                    direction=args.direction,
                 )
-            print(f"Applied lighting (mode={mode_val}, color={args.color}, brightness={args.brightness}).")
+            print(
+                f"Applied lighting (mode={mode_val}, color={args.color}, brightness={args.brightness})."
+            )

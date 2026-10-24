@@ -97,7 +97,9 @@ def cmd_run(args, dev):
         sys.exit(2)
     set_status_backlight(dev, "in-progress", label=args.label)
     try:
-        res = subprocess.run(cmd)
+        # S603: the `run` subcommand exists to exec a user-supplied command —
+        # untrusted input is the feature contract, not an injection surface.
+        res = subprocess.run(cmd, check=False)  # noqa: S603
     except FileNotFoundError as exc:
         # D17 (v0.21.0, §20): `run nonexistent-cmd` leaked a raw
         # FileNotFoundError traceback (exit 1). The command operand is a file

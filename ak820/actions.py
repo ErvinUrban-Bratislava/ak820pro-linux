@@ -31,7 +31,9 @@ def _ensure_aligned(dev):
     if not acked:
         # m4: streaming into an un-aligned pipe is the desync state alignment
         # exists to prevent — retry once, then abort before any chunk is sent.
-        print(f"  WARN: alignment ACK not seen ({aligned_pkts} packets) — retrying alignment once...")
+        print(
+            f"  WARN: alignment ACK not seen ({aligned_pkts} packets) — retrying alignment once..."
+        )
         aligned_pkts, acked = dev.align_data_pipe()
         if not acked:
             raise ProtocolError(
@@ -44,7 +46,7 @@ def _ensure_aligned(dev):
 def upload_frames_to_screen(
     dev,
     frames: list,
-    delays_ms: list = None,
+    delays_ms: list | None = None,
     label: str = "screen",
     force: bool = True,
 ):
@@ -58,7 +60,9 @@ def upload_frames_to_screen(
     # layering inversion.
     should_upload, digest = state.check_and_record_payload_hash(payload_bytes, label, force=force)
     if not should_upload:
-        print(f"Screen already displays '{label}' (sha256={digest[:10]}...). Skipping USB upload (use --force to override).")
+        print(
+            f"Screen already displays '{label}' (sha256={digest[:10]}...). Skipping USB upload (use --force to override)."
+        )
         return False
 
     # §3.5/§4.1: the previous upload ended fully-ACKed + SAVE'd, so the firmware
@@ -79,7 +83,9 @@ def upload_frames_to_screen(
 
     def _progress(idx, total, acks):
         pct = int((idx + 1) / total * 100)
-        print(f"\r  Progress: {pct:3d}% ({idx + 1}/{total} chunks, ACKs: {acks})", end="", flush=True)
+        print(
+            f"\r  Progress: {pct:3d}% ({idx + 1}/{total} chunks, ACKs: {acks})", end="", flush=True
+        )
 
     # m12 (§10.5): `\r` progress spam lands verbatim in journald when stdout
     # is not a tty — stream it only to interactive terminals.
@@ -142,16 +148,18 @@ def upload_to_screen(dev, file_path: str, fit_mode: str = "fill", force: bool = 
         # D11 (v0.15.0): typed error -> exit 8, never a raw traceback.
         raise FileMissingError(f"File not found: {file_path}")
     frames, delays = load_frames_guarded(file_path, fit_mode=fit_mode)
-    return upload_frames_to_screen(dev, frames, delays, label=os.path.basename(file_path), force=force)
+    return upload_frames_to_screen(
+        dev, frames, delays, label=os.path.basename(file_path), force=force
+    )
 
 
-def _payload_digest(frames: list, delays_ms: list = None) -> str:
+def _payload_digest(frames: list, delays_ms: list | None = None) -> str:
     """sha256 of the exact wire payload — identical to what dedup records."""
     payload_bytes, _, _ = build_payload(frames, delays_ms)
     return hashlib.sha256(memoryview(payload_bytes)).hexdigest()
 
 
-def describe_payload(frames: list, delays_ms: list = None, label: str = "screen") -> int:
+def describe_payload(frames: list, delays_ms: list | None = None, label: str = "screen") -> int:
     """`--dry-run` (B7): build the exact wire payload, report digest + chunk
     count, and touch neither the dedup state file nor USB. The digest is the
     same sha256 a real upload would record, so previews are byte-trustworthy."""
@@ -181,15 +189,18 @@ def build_radar_frames(view: str, upcoming: list, today, slide_seconds: float = 
 
     hero_rgb = image_to_rgb565(mr.render_hero_card(upcoming, today=today))
     board_rgb = image_to_rgb565(mr.render_board_card(upcoming, today=today))
-    frames_per_slide = max(1, min(60, int(round(slide_seconds / 0.30))))
+    frames_per_slide = max(1, min(60, round(slide_seconds / 0.30)))
 
     if view == "hero":
         return [hero_rgb], None
     elif view == "board":
         return [board_rgb], None
     elif view == "hybrid":
-        bongo_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "presets", "bongo_cat.gif")
-        frames, delays = [], []
+        bongo_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "presets", "bongo_cat.gif"
+        )
+        frames: list = []
+        delays: list = []
         if os.path.exists(bongo_path):
             b_frames, b_delays = load_frames_from_file(bongo_path, fit_mode="fill")
             # 4 loops of Bongo Cat (~4 seconds)

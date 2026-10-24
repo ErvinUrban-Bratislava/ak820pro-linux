@@ -28,7 +28,7 @@ def _read_hid_identity(dev_dir):
     except OSError:
         return None
 
-    hid_id_line = [l for l in uevent.splitlines() if l.startswith("HID_ID=")]
+    hid_id_line = [line for line in uevent.splitlines() if line.startswith("HID_ID=")]
     if not hid_id_line:
         return None
     parts = hid_id_line[0].split("=")[1].split(":")

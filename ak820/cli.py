@@ -19,14 +19,24 @@ import sys
 
 from .actions import describe_payload
 from .config import cmd_events, cmd_hud_preview, cmd_media_preview, cmd_radar_preview
+from .discovery import find_hidraw_devices  # v0.19.0: sysfs discovery module (§18)
 from .errors import AK820Error, DeviceNotFoundError
 from .handlers import (  # noqa: F401  (backward-compat re-exports)
-    DEVICE_HANDLERS, TFT_COMMANDS, cmd_backlight, cmd_card, cmd_hud, cmd_media,
-    cmd_radar, cmd_run, cmd_status, cmd_sync, cmd_upload, run_watch_loop,
+    DEVICE_HANDLERS,
+    TFT_COMMANDS,
+    cmd_backlight,
+    cmd_card,
+    cmd_hud,
+    cmd_media,
+    cmd_radar,
+    cmd_run,
+    cmd_status,
+    cmd_sync,
+    cmd_upload,
+    run_watch_loop,
 )
-from .parser import build_parser  # noqa: F401  (backward-compat re-export)
+from .parser import build_parser
 from .renderers import DRY_RENDERERS
-from .discovery import find_hidraw_devices  # v0.19.0: sysfs discovery module (§18)
 from .transport import AK820ProDevice
 
 log = logging.getLogger("ak820")
@@ -60,7 +70,9 @@ def _dispatch(args):
     if args.dry_run:
         renderer = DRY_RENDERERS.get(args.command)
         if renderer is None:
-            print(f"[dry-run] '{args.command}' sends no rendered payload — nothing to preview, nothing sent.")
+            print(
+                f"[dry-run] '{args.command}' sends no rendered payload — nothing to preview, nothing sent."
+            )
             return 0
         log.debug("dry-run: rendering '%s' with no USB traffic", args.command)
         frames, delays, label = renderer(args)

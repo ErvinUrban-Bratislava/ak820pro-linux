@@ -11,12 +11,13 @@ every historical import site — `ak820.transport.find_hidraw_devices`, the
 `ak820_ctrl` shim, and mock-patch targets in the test suite — keeps working.
 """
 
+import contextlib
 import errno
 import fcntl
 import os
 import select
 import sys
-from typing import Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from . import protocol
 from .discovery import (  # v0.19.0 re-exports (identity, not copies): §18
@@ -26,6 +27,21 @@ from .discovery import (  # v0.19.0 re-exports (identity, not copies): §18
     find_keyboard_hidraw,
 )
 from .errors import DeviceDisconnectedError, PermissionDeniedError, ProtocolError
+
+# v0.19.0 backward-compat contract (§18): identity helpers are re-exported
+# through this module so every pre-split import site and mock.patch target
+# keeps working. `__all__` documents the contract and pins the re-exports
+# against the lint gate's unused-import rule (F401).
+__all__ = [
+    "AK820ProDevice",
+    "HidTransport",
+    "LinuxHidrawTransport",
+    "_parse_usage_page",
+    "_read_hid_identity",
+    "find_hidraw_devices",
+    "find_keyboard_hidraw",
+    "wait_for_keypress",
+]
 
 
 @runtime_checkable
@@ -38,7 +54,7 @@ class HidTransport(Protocol):
 
     def write_data(self, payload: bytes) -> None: ...
 
-    def read_data(self, timeout: float) -> Optional[bytes]: ...
+    def read_data(self, timeout: float) -> bytes | None: ...
 
 
 class LinuxHidrawTransport:
@@ -55,10 +71,8 @@ class LinuxHidrawTransport:
         for attr in ("data_fd", "ctrl_fd"):
             fd = getattr(self, attr)
             if fd is not None:
-                try:
+                with contextlib.suppress(OSError):
                     os.close(fd)
-                except OSError:
-                    pass
                 setattr(self, attr, None)
 
     @staticmethod
@@ -83,7 +97,7 @@ class LinuxHidrawTransport:
         """Send a 64-byte feature report with Report ID 0x00."""
         buf = bytearray(65)
         buf[0] = 0x00  # Always report ID 0x00 so kernel strips it cleanly
-        buf[1:1 + min(len(report64), 64)] = bytes(report64)[:64]
+        buf[1 : 1 + min(len(report64), 64)] = bytes(report64)[:64]
         try:
             fcntl.ioctl(self.ctrl_fd, protocol.HIDIOCSFEATURE_65, bytes(buf))
         except OSError as exc:
@@ -123,7 +137,7 @@ class LinuxHidrawTransport:
         except OSError as exc:
             raise self._translate(exc, "data-pipe write") from exc
 
-    def read_data(self, timeout: float) -> Optional[bytes]:
+    def read_data(self, timeout: float) -> bytes | None:
         """Return one 64-byte ACK if one arrives within `timeout`, else None.
 
         Timeout guard (v0.11.0): a plain timeout is None, but ENODEV means the
@@ -153,10 +167,8 @@ def wait_for_keypress(timeout=None):
     fds = []
     for p in dev_paths:
         if os.path.exists(p):
-            try:
+            with contextlib.suppress(OSError):
                 fds.append(os.open(p, os.O_RDONLY | os.O_NONBLOCK))
-            except OSError:
-                pass
     if not fds:
         # Fallback to stdin wait if no AK820 Pro hidraw node is accessible.
         # v0.14.0: select() reports /dev/null (and any EOF pipe) as *readable*,
@@ -181,10 +193,8 @@ def wait_for_keypress(timeout=None):
         r, _, _ = select.select(fds, [], [], timeout)
         if r:
             for fd in r:
-                try:
+                with contextlib.suppress(OSError):
                     os.read(fd, 64)
-                except OSError:
-                    pass
             return True
         return False
     finally:

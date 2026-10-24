@@ -12,16 +12,20 @@ from .protocol import LIGHT_MODES
 from .transport import wait_for_keypress
 
 
-def set_status_backlight(dev, status_name: str, label: str = None, wait_key: bool = True):
+def set_status_backlight(dev, status_name: str, label: str | None = None, wait_key: bool = True):
     status_name = status_name.lower().strip()
     if status_name in ("in-progress", "busy", "progress", "work", "running"):
         tag = f" ({label})" if label else ""
         print(f"▶ Status: IN-PROGRESS{tag} -> Pulsing Amber backlight")
-        set_backlight(dev, mode=LIGHT_MODES["breath"], r=255, g=150, b=0, rainbow=False, brightness=4, speed=3)
+        set_backlight(
+            dev, mode=LIGHT_MODES["breath"], r=255, g=150, b=0, rainbow=False, brightness=4, speed=3
+        )
     elif status_name in ("success", "done", "ok", "passed"):
         tag = f" ({label})" if label else ""
         print(f"✔ Status: SUCCESS{tag} -> Emerald Green backlight")
-        set_backlight(dev, mode=LIGHT_MODES["breath"], r=0, g=230, b=70, rainbow=False, brightness=5, speed=2)
+        set_backlight(
+            dev, mode=LIGHT_MODES["breath"], r=0, g=230, b=70, rainbow=False, brightness=5, speed=2
+        )
         if wait_key:
             print("⏳ Awaiting your next keypress on the keyboard to restore ambient lighting...")
             wait_for_keypress()
@@ -30,7 +34,9 @@ def set_status_backlight(dev, status_name: str, label: str = None, wait_key: boo
     elif status_name in ("failed", "error", "fail", "err"):
         tag = f" ({label})" if label else ""
         print(f"✖ Status: FAILED{tag} -> Urgent Red backlight")
-        set_backlight(dev, mode=LIGHT_MODES["breath"], r=255, g=20, b=20, rainbow=False, brightness=5, speed=4)
+        set_backlight(
+            dev, mode=LIGHT_MODES["breath"], r=255, g=20, b=20, rainbow=False, brightness=5, speed=4
+        )
         if wait_key:
             print("⏳ Awaiting your next keypress on the keyboard to acknowledge error...")
             wait_for_keypress()
@@ -59,8 +65,14 @@ def run_backlight_demo(dev, dwell_seconds: float = 6.0):
             print(f"   Mode: {p['mode']} | Color: {p['color']} | Brightness: {p['brightness']}")
             print(f"   Vibe: {p['desc']}")
             set_backlight(
-                dev, mode=p["mode"], r=r, g=g, b=b,
-                rainbow=p["rainbow"], brightness=p["brightness"], speed=p["speed"],
+                dev,
+                mode=p["mode"],
+                r=r,
+                g=g,
+                b=b,
+                rainbow=p["rainbow"],
+                brightness=p["brightness"],
+                speed=p["speed"],
             )
             end_t = time.time() + dwell_seconds
             while time.time() < end_t:

@@ -49,19 +49,27 @@ def cmd_events(args):
             print(f"{'EVENT':<22} {'NEXT DATE':<12} {'LEFT':<8} {'MILESTONE':<12} {'URGENCY'}")
             print("-" * 68)
             for u in upcoming:
-                print(f"{u['title']:<22} {str(u['next_date']):<12} {str(u['days_left']) + 'd':<8} {u['milestone_str']:<12} {u['theme_key']}")
+                print(
+                    f"{u['title']:<22} {u['next_date']!s:<12} {str(u['days_left']) + 'd':<8} {u['milestone_str']:<12} {u['theme_key']}"
+                )
         return 0
     elif action == "add":
         mr.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date
         ev_id = args.short.lower().replace(" ", "-")
-        events = [e for e in cfg.get("events", []) if e.get("id") != ev_id and e.get("title") != args.title]
-        events.append({
-            "id": ev_id,
-            "title": args.title,
-            "short_title": args.short.upper(),
-            "date": args.date,
-            "category": args.category,
-        })
+        events = [
+            e
+            for e in cfg.get("events", [])
+            if e.get("id") != ev_id and e.get("title") != args.title
+        ]
+        events.append(
+            {
+                "id": ev_id,
+                "title": args.title,
+                "short_title": args.short.upper(),
+                "date": args.date,
+                "category": args.category,
+            }
+        )
         cfg["events"] = events
         mr.save_events_config(cfg, cfg_path)
         target_path = cfg_path or mr.get_default_events_path()
@@ -70,7 +78,8 @@ def cmd_events(args):
     elif action == "remove":
         before = len(cfg.get("events", []))
         cfg["events"] = [
-            e for e in cfg.get("events", [])
+            e
+            for e in cfg.get("events", [])
             if e.get("id") != args.target and e.get("title", "").lower() != args.target.lower()
         ]
         if len(cfg["events"]) == before:
@@ -78,8 +87,7 @@ def cmd_events(args):
             # and exit 0 — a typo looked like success, and the config file was
             # rewritten for nothing. Fail friendly (exit 6) and leave the file alone.
             raise mr.ConfigError(
-                f"No event with id or title matching {args.target!r} — "
-                "check `ak820 events list`."
+                f"No event with id or title matching {args.target!r} — check `ak820 events list`."
             )
         mr.save_events_config(cfg, cfg_path)
         print(f"Removed {before - len(cfg['events'])} event(s).")

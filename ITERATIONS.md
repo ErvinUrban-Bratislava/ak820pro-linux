@@ -25,6 +25,7 @@
 | `v0.18.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §17): D12 `upload <non-image/dir/corrupt>` raw PIL traceback → new `InvalidFileError` exit **9** via shared `actions.load_frames_guarded` (live + `--dry-run` fail identically) + D13 `events remove <no-match>` silent success → `ConfigError` exit 6 with config left byte-identical + D14 `--save-preview` path errors (missing parents auto-created; unusable targets exit 9) + m13 version drift (`__version__` 0.9.0 vs pyproject 1.0.0) locked equal by test; README/`DOCUMENTED_CODES`/package/shim synced in one invariant-locked commit | `python3 -m unittest` 263/263 + live exit probes 8/9 via shim |
 | `v0.19.0` | 2026-10-24 | Done | Modular Package Refactoring (REVIEW.md §18): sysfs discovery (`find_hidraw_devices`/`find_keyboard_hidraw` + helpers) extracted byte-identically from `transport.py` (299 → 229 lines) into new `ak820/discovery.py` (99 lines) — *which* nodes vs *how* to talk over them; identity re-exports keep `transport`/`ak820`/`ak820_ctrl`/`cli` and all mock-patch targets intact; §10.2 refined (fd/io grep stays transport-only; sysfs path strings allowed in `discovery.py`); `discovery → {protocol}` keeps the graph acyclic | `python3 -m unittest` 278/278 + live `probe`/`--dry-run` via shim |
 | `v0.20.0` | 2026-10-24 | Done | Disconnect Recovery & Open-Path Robustness (REVIEW.md §19): D15 `AK820ProDevice.__enter__` leaked raw OSError tracebacks (exit 1) when a node vanished between discovery and open (ENOENT/ENXIO) or the udev rule was missing (EACCES/EPERM) — `_translate` now maps ENOENT/ENXIO with ENODEV → `DeviceDisconnectedError` 75 and open failures → 75/4, m1 close-once now test-locked; D16 `handshake()` swallowed `PermissionDeniedError` as a §3.6 blip and misattributed strike two as a dead pipe (75) — permission errors now fail fast (4); mid-stream/mid-align disconnect (75) never retried like exit-5, never reaches SAVE, digest unrecorded, pipe flag dirty; `FakeTransport(perm_denied=True)` fault | `python3 -m unittest` 300/300 + live `probe`/`--dry-run` via shim |
+| `v0.22.0` | 2026-10-24 | Done | Static Analysis Gate (§14.2): ruff (check + format --check) + mypy on `ak820/` wired into `scripts/lint.sh` and a new CI `lint` job reading one committed `pyproject.toml` baseline (line-length 100, target py310, curated rule families) — local and CI can never drift; all 27 ruff + 37 mypy findings fixed behavior-neutrally (implicit Optionals, `contextlib.suppress`, m4 retry re-expressed via short-circuit `and` with call-count test-lock, explicit `check=False`, transport `__all__` pins §18 re-exports against F401), only two justified noqa sites; `[project.scripts]` intactness regression-locked after the config-insertion trap | `python3 -m unittest` 328/328 + `scripts/lint.sh` GREEN + live `--dry-run`/`--help`/version probes via shim |
 | `v0.21.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §20): D17 `run <missing-command>` raw `FileNotFoundError` traceback → `FileMissingError` 8 / non-executable → `InvalidFileError` 9 (never 4 — 4 stays "device node rejected us") + D18 Ctrl+C during upload/wait/child dumped a traceback → `main()` catches `KeyboardInterrupt` → friendly line + exit 130 (watch loop keeps its clean local stop) + D19 exit-5 retry discarded the align result and streamed into an un-aligned pipe (m4 bypass) → shared `_ensure_aligned` helper, structurally test-locked + m14 signal death → 128+N (137 not 247) + m15/m16 undocumented exit-1 user errors → documented usage 2; README Exit Codes synced (rows 2/8/9 extended, new 130 row) | `python3 -m unittest` 316/316 + live `probe`/`--dry-run`/exit-2 probes via shim |
 
 ---
@@ -225,12 +226,24 @@
   - New `tests/test_reaudit_v021.py` (16 offline tests, zero hardware).
   - Verify `python3 -m unittest discover -s tests` passes 100%.
 
-- [ ] **`v0.22.0`** — Static Analysis Gate (Tier C lane, queued since §14.2):
+- [x] **`v0.22.0`** — Static Analysis Gate (Tier C lane, queued since §14.2):
   - Add `ruff` (+ `ruff format --check`) and `mypy` on `ak820/` to CI and a local
     `scripts/lint.sh`; fix every finding in an isolated, behavior-neutral commit.
   - Baseline `pyproject.toml` config (line-length, target-version) committed so
     local and CI agree; no functional changes allowed in this iteration.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - **Shipped:** `[tool.ruff]` (line-length 100, target py310, curated select) +
+    `[tool.mypy]` (files=["ak820"], py3.10) committed as the single config source;
+    `scripts/lint.sh` (ruff check + format --check + mypy) runs identically local
+    and in the new CI `lint` job. All 27 ruff + 37 mypy findings fixed behavior-
+    neutrally: implicit Optionals typed, `contextlib.suppress` for the four
+    try/except-OSError/pass sites, m4 align retry re-expressed via short-circuit
+    `and` (call-count test-locked), `check=False` explicit on `run` child,
+    transport `__all__` pins the §18 re-exports against F401, SHOWCASE_PRESETS
+    typed `list[dict[str, Any]]`; two noqa sites carry written justifications
+    (state fail-dirty contract, `run` untrusted-input-by-design). New
+    `tests/test_lint_gate_v022.py` (12 tests: gate end-to-end, pyproject baseline,
+    `[project.scripts]` intactness regression, re-export identity, m4 semantics).
 
 - [ ] **`v0.23.0`** — Performance: numpy RGB565 Fast Path (Tier C lane, queued since §14.2):
   - Vectorized RGB565 packer in `ak820/screen.py` behind the existing function
