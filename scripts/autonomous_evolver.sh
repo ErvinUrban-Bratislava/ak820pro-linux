@@ -60,9 +60,12 @@ for i in $(seq 1 "$MAX_ITERATIONS"); do
   ITER_LOG="${LOG_DIR}/iter_${NEXT_TAG}_$(date +%Y%m%d_%H%M%S).jsonl"
   PROMPT_FILE="${LOG_DIR}/prompt_${NEXT_TAG}.txt"
 
+  # Check if a previous iteration's remote CI failed
+  CI_FAILURE_LOG=$(ls -t "${LOG_DIR}"/ci_failure_*.log 2>/dev/null | head -n 1)
+  if [[ -n "$CI_FAILURE_LOG" && -s "$CI_FAILURE_LOG" ]]; then
+    MODE_INSTRUCTION="CRITICAL PRIORITY: Remote GitHub Actions CI failed! Diagnose the failure in ${CI_FAILURE_LOG}, fix the failing test or build error, ensure tests pass, and commit. Do not proceed to new features until remote CI is fixed."
   # Check if __NEXT_TAG__ has an explicit queued item in ITERATIONS.md
-  QUEUED_ITEM=$(grep -E -- "- \[ \] \*\*(\`?)${NEXT_TAG}(\`?)\*\*" ITERATIONS.md 2>/dev/null || true)
-  if [[ -n "$QUEUED_ITEM" ]]; then
+  elif [[ -n "$QUEUED_ITEM" ]]; then
     MODE_INSTRUCTION="PRIORITY QUEUE: Implement the queued specification for ${NEXT_TAG} from ITERATIONS.md. Follow all technical requirements and bugfix specifications defined there."
   else
     # Continuous Cadence rotation once priority queue completes:
@@ -125,16 +128,45 @@ EOF
     git tag -f "$NEXT_TAG"
     git push origin master --tags || true
     log "✅ Iteration ${NEXT_TAG} successfully verified, committed, and pushed!"
+
+    # Proactive Remote CI Verification Gate
+    CI_CONCLUSION="unknown"
+    if [[ -d .github/workflows ]]; then
+      log "🔍 Polling remote GitHub Actions CI status for ${NEXT_TAG}..."
+      sleep 12
+      for _ in $(seq 1 12); do
+        CI_DATA=$(gh run list --limit 1 --json status,conclusion -q '.[0]' 2>/dev/null || true)
+        CI_STATUS=$(echo "$CI_DATA" | jq -r '.status // "unknown"')
+        CI_CONCLUSION=$(echo "$CI_DATA" | jq -r '.conclusion // "unknown"')
+        if [[ "$CI_STATUS" == "completed" ]]; then
+          break
+        fi
+        sleep 10
+      done
+      if [[ "$CI_CONCLUSION" == "success" ]]; then
+        log "✅ Remote GitHub Actions CI verified GREEN for ${NEXT_TAG}!"
+        rm -f "${LOG_DIR}"/ci_failure_*.log 2>/dev/null || true
+      elif [[ "$CI_CONCLUSION" == "failure" ]]; then
+        log "❌ Remote GitHub Actions CI FAILED for ${NEXT_TAG}! Capturing failed logs..."
+        gh run view --log-failed > "${LOG_DIR}/ci_failure_${NEXT_TAG}.log" 2>/dev/null || true
+      else
+        log "⏳ Remote CI still running (${CI_STATUS}/${CI_CONCLUSION}); proceeding..."
+      fi
+    fi
   else
     log "❌ Smoke test failed for ${NEXT_TAG}! Rolling back to ${SAFE_COMMIT}..."
     git reset --hard "$SAFE_COMMIT"
     git clean -fd
   fi
 
-  # Check if agent signaled complete
+  # Check if agent signaled complete (refuse exit if remote CI is failed)
   if grep -q "<STATUS>PROJECT_COMPLETE</STATUS>" "$ITER_LOG" 2>/dev/null; then
-    log "🏁 Agent signaled project is complete and all meaningful improvements are exhausted. Exiting cleanly."
-    break
+    if [[ -d .github/workflows && "${CI_CONCLUSION:-unknown}" == "failure" ]]; then
+      log "⚠️ Agent signaled PROJECT_COMPLETE but remote CI is FAILED! Continuing evolution to remediate CI..."
+    else
+      log "🏁 Agent signaled project is complete and remote CI is healthy. Exiting cleanly."
+      break
+    fi
   fi
 
   sleep 5
