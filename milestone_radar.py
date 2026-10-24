@@ -174,16 +174,46 @@ def parse_event_date(raw: str) -> Tuple[Optional[int], int, int]:
 
 
 def load_events_config(config_path: Optional[str] = None) -> Dict:
+    """Load the events config, validating its SHAPE at this single choke point.
+
+    m7 (v0.12.0) covered corrupt JSON only. D22 (v0.24.0, §21) closes the rest
+    of the raw-traceback family: a config that is a directory or unreadable
+    (OSError), valid JSON of the wrong shape (top level not an object, `events`
+    not a list, an entry not an object) used to crash every consumer
+    (`cfg.get`/`ev.get` AttributeError, IsADirectoryError) with exit 1. All of
+    them are fix-the-config errors -> ConfigError (exit 6), the D4/D5/m7 class.
+    """
     path = config_path or get_default_events_path()
     if not os.path.exists(path):
         return {"default_mode": "radar", "default_preset": "bongo", "events": []}
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
+            cfg = json.load(f)
     except json.JSONDecodeError as exc:
         # m7 (closed v0.12.0): corrupt JSON is a ConfigError (exit 6) with the
         # offending path, not a raw JSONDecodeError traceback.
         raise ConfigError(f"Invalid JSON in events config {path}: {exc}") from exc
+    except OSError as exc:
+        # D22: directory-as-config (EISDIR), EACCES, or a vanish race — same
+        # fix-the-config class as corrupt JSON.
+        raise ConfigError(f"Cannot read events config {path}: {exc.strerror or exc}") from exc
+    if not isinstance(cfg, dict):
+        raise ConfigError(
+            f"Events config {path} must contain a JSON object, got {type(cfg).__name__}."
+        )
+    events = cfg.get("events")
+    if events is not None:
+        if not isinstance(events, list):
+            raise ConfigError(
+                f"Events config {path}: 'events' must be a list, got {type(events).__name__}."
+            )
+        for idx, ev in enumerate(events):
+            if not isinstance(ev, dict):
+                raise ConfigError(
+                    f"Events config {path}: events[{idx}] must be an object, "
+                    f"got {type(ev).__name__}."
+                )
+    return cfg
 
 
 def save_events_config(cfg: Dict, config_path: Optional[str] = None):
@@ -192,21 +222,27 @@ def save_events_config(cfg: Dict, config_path: Optional[str] = None):
     mkstemp + os.replace means a crash mid-write can never leave a truncated
     config behind, and a bare relative filename (dirname == "") resolves to
     "." instead of raising in os.makedirs.
+
+    D22 (v0.24.0): an unwritable target (EACCES parent, read-only fs) is a
+    fix-the-config error too -> ConfigError (exit 6), never a raw traceback.
     """
     path = config_path or get_default_events_path()
     parent = os.path.dirname(path) or "."
-    os.makedirs(parent, exist_ok=True)
-    fd, tmp_path = tempfile.mkstemp(dir=parent, prefix=".events-", suffix=".json.tmp")
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(cfg, f, indent=2)
-        os.replace(tmp_path, path)
-    except BaseException:
+        os.makedirs(parent, exist_ok=True)
+        fd, tmp_path = tempfile.mkstemp(dir=parent, prefix=".events-", suffix=".json.tmp")
         try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        raise
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                json.dump(cfg, f, indent=2)
+            os.replace(tmp_path, path)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise
+    except OSError as exc:
+        raise ConfigError(f"Cannot write events config {path}: {exc.strerror or exc}") from exc
 
 
 def _threshold(cfg: Dict, key: str, default: int) -> int:

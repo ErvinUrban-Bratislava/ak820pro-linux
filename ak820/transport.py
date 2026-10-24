@@ -173,12 +173,14 @@ def wait_for_keypress(timeout=None):
         # v0.14.0: select() reports /dev/null (and any EOF pipe) as *readable*,
         # which used to answer an instant false "keypress". Consume the byte
         # and treat EOF (b"") as no keypress — only real input counts.
-        r, _, _ = select.select([sys.stdin], [], [], timeout)
-        if not r:
-            return False
+        # m17 (v0.24.0, §21): a closed stdin (select EBADF / fileno ValueError)
+        # used to leak a traceback — no usable stdin means no keypress: False.
         try:
+            r, _, _ = select.select([sys.stdin], [], [], timeout)
+            if not r:
+                return False
             return bool(os.read(sys.stdin.fileno(), 1))
-        except OSError:
+        except (OSError, ValueError):
             return False
     try:
         # Drain stale unread inputs

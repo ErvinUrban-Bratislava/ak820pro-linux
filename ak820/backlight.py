@@ -8,7 +8,7 @@ import sys
 import time
 from typing import Any
 
-from .protocol import CMD_DELAY, _cmd_packet, parse_hex_color, parse_mode
+from .protocol import CMD_DELAY, LIGHT_MODES, _cmd_packet, parse_hex_color, parse_mode
 
 # Heterogeneous preset records (str/int/bool values) — `Any` keeps the dict
 # values usable at call sites (status.py demo) without lying about types.
@@ -192,7 +192,13 @@ def apply_idle_backlight(dev):
             dev, preset["mode"], r, g, b, preset["rainbow"], preset["brightness"], preset["speed"]
         )
     else:
-        r, g, b = parse_hex_color(cfg["color"])
+        try:
+            r, g, b = parse_hex_color(cfg["color"])
+        except ValueError as exc:
+            # m19 (v0.24.0, §21): hand-edited idle_color -> ConfigError (6), never a raw traceback.
+            import milestone_radar as mr
+
+            raise mr.ConfigError(f"Invalid idle backlight color in events config: {exc}") from exc
         set_backlight(
             dev,
             cfg["mode"],
@@ -211,8 +217,6 @@ def list_backlight_presets():
     print("-" * 80)
     for p in SHOWCASE_PRESETS:
         print(f"{p['key']:<18} {p['name']:<20} {p['mode']!s:<6} {p['color']:<10} {p['desc']}")
-    from .protocol import LIGHT_MODES
-
     print("\nSupported mode names:", ", ".join(LIGHT_MODES.keys()))
 
 

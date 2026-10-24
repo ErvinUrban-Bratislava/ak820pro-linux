@@ -123,6 +123,13 @@ def main(argv=None) -> int:
         # convention — same status Python's default produced, minus the traceback.
         print("\nInterrupted (Ctrl+C).", file=sys.stderr)
         sys.exit(130)
+    if isinstance(result, bool):
+        # D20 (v0.24.0, §21): upload_frames_to_screen returns True (uploaded)
+        # or False (dedup skip) — BOTH are success (exit 0). bool is an int
+        # subclass, so `return result or 0` handed True to the console-script
+        # wrapper's sys.exit(True) -> exit 1 on a *successful* upload, while
+        # the dedup skip exited 0. §3.4: 0 is the only success status.
+        return 0
     return result or 0
 
 

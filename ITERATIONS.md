@@ -28,6 +28,7 @@
 | `v0.22.0` | 2026-10-24 | Done | Static Analysis Gate (§14.2): ruff (check + format --check) + mypy on `ak820/` wired into `scripts/lint.sh` and a new CI `lint` job reading one committed `pyproject.toml` baseline (line-length 100, target py310, curated rule families) — local and CI can never drift; all 27 ruff + 37 mypy findings fixed behavior-neutrally (implicit Optionals, `contextlib.suppress`, m4 retry re-expressed via short-circuit `and` with call-count test-lock, explicit `check=False`, transport `__all__` pins §18 re-exports against F401), only two justified noqa sites; `[project.scripts]` intactness regression-locked after the config-insertion trap | `python3 -m unittest` 328/328 + `scripts/lint.sh` GREEN + live `--dry-run`/`--help`/version probes via shim |
 | `v0.23.0` | 2026-10-24 | Done | Optional numpy RGB565 fast path (§4.4): guarded `import numpy as _np` in `screen.py`, vectorized `_rgb565_numpy` (uint16 shifts, `astype("<u2")` little-endian) dispatched behind the unchanged `image_to_rgb565` signature with the v0.8.0 per-row loop kept as numpy-free fallback; worst case 128×128×255 frames **0.488 s → 0.008 s (~60×)**, byte-identical to the reference loop on gradient + noise; `pyproject` mypy override keeps the gate green on numpy-free CI without making numpy a dependency | `python3 -m unittest` 342/342 on both numpy-free system python (5 skips) and numpy venv (0 skips) + `scripts/lint.sh` GREEN + live `--dry-run` exit-8/version probes |
 | `v0.21.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §20): D17 `run <missing-command>` raw `FileNotFoundError` traceback → `FileMissingError` 8 / non-executable → `InvalidFileError` 9 (never 4 — 4 stays "device node rejected us") + D18 Ctrl+C during upload/wait/child dumped a traceback → `main()` catches `KeyboardInterrupt` → friendly line + exit 130 (watch loop keeps its clean local stop) + D19 exit-5 retry discarded the align result and streamed into an un-aligned pipe (m4 bypass) → shared `_ensure_aligned` helper, structurally test-locked + m14 signal death → 128+N (137 not 247) + m15/m16 undocumented exit-1 user errors → documented usage 2; README Exit Codes synced (rows 2/8/9 extended, new 130 row) | `python3 -m unittest` 316/316 + live `probe`/`--dry-run`/exit-2 probes via shim |
+| `v0.24.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §21): D20 successful upload exited **1** (`main()` returned `True`, bool-is-int → console wrapper `sys.exit(True)` → 1; both uploaded & dedup-skip now map to 0, shim `__main__` uses `sys.exit(main())`) + D21 bare `backlight` AttributeError traceback → required sub-action, usage 2 + D22 events-config shape/read/write violations (non-object, bad `events`, directory/unreadable/unwritable) → `ConfigError` 6 at the single load choke point + D23 `--save-preview` write failures (unwritable parent/target, unknown extension) → `InvalidFileError` 9 + D24 `--seconds/--watch/--dwell nan|inf` → `finite_float` argparse type, usage 2 + m17 closed-stdin keypress wait → False + m19 hand-edited `idle_color` → `ConfigError` 6; README rows 2/6/9 extended; m18/m20 queued | `python3 -m unittest` 373/373 + `scripts/lint.sh` GREEN + live exit-2/6/9 probes via shim |
 
 ---
 
@@ -265,3 +266,19 @@
     (14 tests: dual-path byte-identity, dispatch routing, size guard on both
     paths, import-guard + no-hard-dependency source locks); suite runs green
     both ways — system python (numpy absent, 5 skips) and numpy venv (0 skips).
+
+- [x] **`v0.24.0`** — Comprehensive Re-Audit (REVIEW.md §21):
+  - Walk every error, operand, and signal path for raw tracebacks, undocumented
+    exits, and contract drift; reproduce every suspect live before fixing.
+  - D20: successful upload exits 1 (bool-is-int through `sys.exit`) -> 0.
+  - D21: bare `backlight` AttributeError traceback -> required action, exit 2.
+  - D22: events-config shape/read/write violations -> `ConfigError` (6).
+  - D23: `--save-preview` write failures -> `InvalidFileError` (9).
+  - D24: non-finite `--seconds/--watch/--dwell` -> usage error exit 2.
+  - m17 closed-stdin keypress wait; m19 bad `idle_color` -> 6.
+  - New `tests/test_reaudit_v024.py` (31 offline tests, zero hardware).
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - **Shipped:** all five defects + two minors closed as above; suite 342 -> 373,
+    `scripts/lint.sh` GREEN, live probes 2/6/9 via the `ak820_ctrl` shim.
+    Queued follow-ups: m18 (config field-value coercion), m20 (no-op `events
+    add` rewrite).

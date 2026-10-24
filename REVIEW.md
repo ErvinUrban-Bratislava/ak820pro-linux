@@ -1374,3 +1374,88 @@ completes end-to-end, structural align-centralization lock, backlight usage
 exits 2. Two pre-existing tests (m10/banana) re-anchored to the new exit 2.
 Suite: 300 → 316 tests, all green; live `probe` (real hardware), `--dry-run
 radar`, and empty-`run` exit-2 probe through the `ak820_ctrl` shim.
+
+## 21. Comprehensive Re-Audit (v0.24.0, 2026-10-24)
+
+Full-codebase re-audit walking every error, operand, and signal path for raw
+tracebacks, undocumented exits, and contract drift — with every suspect first
+reproduced live through the `ak820_ctrl` shim before a line of code changed.
+
+### 21.1 New defects found & closed in v0.24.0
+
+- **D20 — a *successful* upload exited 1.** `upload_frames_to_screen` returns
+  `True` (uploaded) / `False` (dedup skip); `main()` ended with
+  `return result or 0`, which hands `True` through verbatim — and because
+  `bool` is an `int` subclass, the console-script wrapper's `sys.exit(True)`
+  exits **1**. The §3.4 contract (README row 0) says 0 is the only success
+  status, so the more-successful outcome (a real flash) exited nonzero while
+  the dedup skip exited 0. `main()` now maps any bool handler result to 0;
+  the shim's `__main__` also switched to `sys.exit(main())` so script and
+  entry-point share one contract. Test-locked end-to-end: a FakeTransport
+  upload through `cli.main()` returns int 0 (assertNotIsInstance bool) and
+  `sys.exit(rc)` raises `SystemExit(0)`.
+- **D21 — bare `ak820 backlight` dumped an `AttributeError` traceback.**
+  `dispatch_backlight`'s `args.bl_action or "set"` fallback reads `preset`,
+  `color`, … — attributes argparse only defines once a sub-action parses
+  them. The sub-action is now `required=True`: friendly argparse usage error,
+  documented exit 2 (m16 class), and the crash path is unreachable.
+- **D22 — events-config shape violations leaked raw tracebacks.** m7 covered
+  corrupt JSON only. A config that is a *directory* or unreadable (OSError),
+  valid JSON whose top level is not an object (`AttributeError` on `cfg.get`),
+  whose `events` is not a list, or whose entry is not an object all crashed
+  with exit 1 — as did an unwritable write target (`events add` into a
+  read-only dir). `load_events_config` now validates the shape at the single
+  load choke point (every consumer may assume dict-of-list-of-dicts) and both
+  load and save translate OSError → `ConfigError` (6): fix the config, the
+  D4/D5/m7 class.
+- **D23 — `--save-preview` write failures leaked raw tracebacks.** D14 typed
+  *target shape* errors (9) but not *write* errors: an unwritable parent
+  (makedirs EACCES), an unwritable target (PIL save EACCES/ENOSPC), or an
+  unknown file extension (PIL `ValueError`) all exited 1 with a traceback.
+  `_prepare_preview_file` and a new `_save_preview` wrapper now map every
+  such failure to `InvalidFileError` (9) — same unusable-target class as
+  D12/D14 — across `radar`, `hud`, `stats`, and `media` previews.
+- **D24 — `--seconds/--watch/--dwell nan|inf` crashed or hung.** `type=float`
+  accepts `nan`/`inf`: `radar --seconds nan` died in `round(NaN)`
+  (ValueError), `--seconds inf` in `round(inf)` (OverflowError), and
+  `hud --watch inf` would sleep forever. A `finite_float` argparse type
+  rejects non-finite values with the friendly usage error, exit 2 (m16
+  precedent); finite values (incl. 0 and negatives, which clamp) parse
+  exactly as before.
+
+### 21.2 Minor defects closed
+
+- **m17** — `wait_for_keypress`'s stdin fallback crashed on a *closed* stdin
+  (select EBADF on a closed fd 0, ValueError on a closed file object); the
+  whole stdin interaction is one guarded block now — no usable stdin means no
+  keypress can arrive: `False`.
+- **m19** — a hand-edited `backlight.idle_color` in events.json crashed the
+  *restore-idle* step (after the keypress wait) with a raw `ValueError` from
+  `parse_hex_color`; now `ConfigError` (6), the same fix-the-config class.
+
+### 21.3 Accepted designs & queued observations
+
+- `--dry-run` + `--save-preview` together: the preview acts, the dry-run
+  notice is skipped — preview is the more specific intent (unchanged from
+  §20.3's dry-run scoping).
+- **m18 (queued)** — non-string *field values* inside otherwise-valid event
+  objects (`"title": 123` → `.lower()` AttributeError; `note` with a stray
+  `{placeholder}` → `format` KeyError; `idle_mode` as a string). Shape is
+  locked (D22); value-type coercion is the natural follow-up.
+- **m20 (queued)** — `events add` rewrites the config even when the added
+  event is byte-identical to an existing entry (id/title dedup already
+  prevents duplicates, so this is cosmetic).
+
+### 21.4 Verification
+
+`tests/test_reaudit_v024.py` (31 offline tests, zero hardware): D20 int-0 +
+not-a-bool + console-wrapper `SystemExit(0)` + dedup-skip regression; D21
+exit 2 + subaction parity + `backlight list` unchanged; D22 list/string/
+non-list-events/bad-entry/directory/unreadable/unwritable → 6 incl. m7 and
+happy-path regressions; D23 unwritable parent/target + unknown extension → 9
+incl. D14b and happy-path regressions; D24 nan/inf/±inf on all three flags →
+2 + finite parity; m17 closed-file-object and closed-fd stdin; m19 direct +
+through `main()`. Suite: 342 → 373 tests, all green (5 numpy-optional skips
+on numpy-free system python); `scripts/lint.sh` GREEN; live probes through
+the shim: shape/dir config → 6, bare `backlight` → 2, `--seconds nan` → 2,
+unwritable preview → 9, `probe` → 0 on real hardware, version 0.24.0.

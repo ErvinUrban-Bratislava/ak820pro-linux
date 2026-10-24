@@ -24,6 +24,7 @@ imports, pipx entry points, and user scripts keep working unchanged.
 
 import os  # noqa: F401  (kept: tests patch os.open/close/read through this module)
 import select  # noqa: F401  (kept: tests patch select.select through this module)
+import sys  # v0.24.0: __main__ honors main()'s exit code like the console scripts
 
 from ak820 import state  # noqa: F401
 from ak820.actions import (  # noqa: F401
@@ -98,4 +99,6 @@ from ak820.transport import (  # noqa: F401
 )
 
 if __name__ == "__main__":
-    main()
+    # D20 (v0.24.0): mirror the console-script wrapper (`sys.exit(main())`) so
+    # `python3 ak820_ctrl.py ...` and the `ak820` script share one exit contract.
+    sys.exit(main())

@@ -11,6 +11,21 @@ Invariant: `cli.build_parser is parser.build_parser` (re-export, not a copy)
 """
 
 import argparse
+import math
+
+
+def finite_float(value: str) -> float:
+    """argparse type (D24, v0.24.0): any float EXCEPT nan/inf.
+
+    `type=float` happily accepts "nan"/"inf", which crashed downstream with a
+    raw ValueError/OverflowError (`radar --seconds nan` -> round(NaN)) or an
+    unbounded sleep (`hud --watch inf`). A non-finite numeric flag is a usage
+    error -> argparse's friendly message + documented exit 2 (m16 precedent).
+    """
+    num = float(value)  # ValueError -> argparse turns it into an exit-2 usage error
+    if not math.isfinite(num):
+        raise argparse.ArgumentTypeError(f"{value!r} is not a finite number")
+    return num
 
 
 def build_parser():
@@ -52,7 +67,7 @@ def build_parser():
     )
     p.add_argument(
         "--seconds",
-        type=float,
+        type=finite_float,
         default=5.0,
         help="Dwell time in seconds per slide in cycle/hybrid mode (default: 5.0)",
     )
@@ -101,7 +116,7 @@ def build_parser():
     )
     p.add_argument(
         "--watch",
-        type=float,
+        type=finite_float,
         default=0,
         help="Continuously refresh every N seconds (e.g. --watch 15)",
     )
@@ -115,7 +130,7 @@ def build_parser():
     )
     p.add_argument(
         "--watch",
-        type=float,
+        type=finite_float,
         default=0,
         help="Continuously refresh every N seconds (e.g. --watch 10)",
     )
@@ -148,12 +163,19 @@ def build_parser():
     sub.add_parser("probe", help="Detect keyboard HID interfaces")
 
     bl = sub.add_parser("backlight", help="Control RGB keyboard backlighting (modes, colors, demo)")
-    bls = bl.add_subparsers(dest="bl_action", required=False)
+    # D21 (v0.24.0, §21): bare `ak820 backlight` used to crash with an
+    # AttributeError traceback — the "set" fallback reads attributes (preset,
+    # color, ...) that only exist once a sub-action parsed them. Requiring the
+    # action makes argparse emit its friendly usage error (exit 2, m16 class).
+    bls = bl.add_subparsers(dest="bl_action", required=True)
     d = bls.add_parser(
         "demo", help="Showcase curated ambient lighting presets live on your keyboard"
     )
     d.add_argument(
-        "--dwell", type=float, default=6.0, help="Seconds to display each preset (default: 6.0)"
+        "--dwell",
+        type=finite_float,
+        default=6.0,
+        help="Seconds to display each preset (default: 6.0)",
     )
     bls.add_parser("list", help="List all lighting modes and showcase presets")
     s = bls.add_parser("set", help="Set lighting mode, color, brightness or preset")

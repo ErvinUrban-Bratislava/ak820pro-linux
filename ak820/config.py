@@ -102,13 +102,34 @@ def _prepare_preview_file(path: str) -> str:
     directory semantics — `hud --save-preview out/hud.png` used to leak a raw
     FileNotFoundError); an existing directory passed as a file target becomes
     the typed InvalidFileError (exit 9) instead of PIL's IsADirectoryError.
+
+    D23 (v0.24.0, §21): the makedirs itself can fail (EACCES under a read-only
+    parent, EEXIST race, ENOSPC) — same unusable-target class -> exit 9.
     """
     if os.path.isdir(path):
         raise InvalidFileError(
             f"Preview target {path!r} is a directory — give a file path (e.g. {path}/hud.png)."
         )
-    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    except OSError as exc:
+        raise InvalidFileError(
+            f"Preview target {path!r} is not writable: {exc.strerror or exc}"
+        ) from exc
     return path
+
+
+def _save_preview(img, path: str) -> None:
+    """D23 (v0.24.0): PIL's save() raises raw OSErrors (EACCES, ENOSPC, EROFS)
+    on an unwritable target, and a raw ValueError for an unknown/extensionless
+    filename (`--save-preview out/x.xyz`) — same unusable-target class as
+    D12/D14 -> exit 9."""
+    try:
+        img.save(path)
+    except OSError as exc:
+        raise InvalidFileError(f"Cannot write preview {path!r}: {exc.strerror or exc}") from exc
+    except ValueError as exc:  # unknown file extension — PIL's own "unusable target"
+        raise InvalidFileError(f"Cannot write preview {path!r}: {exc}") from exc
 
 
 def cmd_radar_preview(args):
@@ -128,10 +149,16 @@ def cmd_radar_preview(args):
             f"Preview target {args.save_preview!r} is not a usable directory — "
             "a file already exists at that path."
         ) from exc
+    except OSError as exc:
+        # D23 (v0.24.0): unwritable preview directory (EACCES, read-only fs)
+        # -> same exit-9 class, never a raw makedirs traceback.
+        raise InvalidFileError(
+            f"Preview target {args.save_preview!r} is not usable: {exc.strerror or exc}"
+        ) from exc
     p1 = os.path.join(args.save_preview, "radar_hero.png")
     p2 = os.path.join(args.save_preview, "radar_board.png")
-    mr.render_hero_card(upcoming, today=today).save(p1)
-    mr.render_board_card(upcoming, today=today).save(p2)
+    _save_preview(mr.render_hero_card(upcoming, today=today), p1)
+    _save_preview(mr.render_board_card(upcoming, today=today), p2)
     print(f"Saved previews to {p1} and {p2}")
     return 0
 
@@ -140,7 +167,7 @@ def cmd_hud_preview(args):
     import widgets
 
     img = widgets.render_hud_card()
-    img.save(_prepare_preview_file(args.save_preview))
+    _save_preview(img, _prepare_preview_file(args.save_preview))
     print(f"Saved HUD preview to {args.save_preview}")
     return 0
 
@@ -149,6 +176,6 @@ def cmd_media_preview(args):
     import widgets
 
     img = widgets.render_media_card()
-    img.save(_prepare_preview_file(args.save_preview))
+    _save_preview(img, _prepare_preview_file(args.save_preview))
     print(f"Saved media preview to {args.save_preview}")
     return 0

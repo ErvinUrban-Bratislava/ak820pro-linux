@@ -241,14 +241,14 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | Code | Meaning | Raised as |
 |:---|:---|:---|
 | `0` | Success (includes dedup skip: identical payload already on screen) | — |
-| `2` | Usage error: argparse bad/missing flags, invalid `--mode`/`--color` value, or `run` with no command | `argparse` / `SystemExit(2)` |
+| `2` | Usage error: argparse bad/missing flags, invalid `--mode`/`--color` value, non-finite `--seconds`/`--watch`/`--dwell` (nan/inf), `backlight` without an action, or `run` with no command | `argparse` / `SystemExit(2)` |
 | `3` | Device not found (is the keyboard connected via USB?) | `DeviceNotFoundError` |
 | `4` | Permission denied on the device node — install the udev rule from `udev/` (see Setup) | `PermissionDeniedError` |
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
-| `6` | Invalid events config (malformed event date or corrupt JSON — nothing saved or rendered) | `ConfigError` |
+| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list / entry not an object —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
 | `8` | Input file not found (`upload <file>` / `--dry-run upload <file>` with a bad path, or `run <missing-command>`) — user error, retrying will not help | `FileMissingError` |
-| `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path, or `run <command>` is not executable | `InvalidFileError` |
+| `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path / not writable (unwritable parent or target, unknown file extension), or `run <command>` is not executable | `InvalidFileError` |
 | `75` | `EX_TEMPFAIL`: USB device vanished mid-operation — transient, systemd `Restart=on-failure` will re-run the command | `DeviceDisconnectedError` |
 | `130` | Interrupted by user (Ctrl+C / SIGINT) — friendly line, never a traceback; mid-upload nothing was flashed and the digest stays unrecorded, so a re-run re-aligns and retries | `KeyboardInterrupt` |
 
