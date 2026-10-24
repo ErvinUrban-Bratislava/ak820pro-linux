@@ -1,0 +1,16 @@
+{
+  "name": "ak820pro-linux",
+  "max_iterations": 50,
+  "file_limit_loc": 300,
+  "tag_prefix": "v0.",
+  "gates": {
+    "compile_cmd": "python3 -m compileall -q .",
+    "lint_cmd": "scripts/lint.sh",
+    "test_cmd": "python3 -m unittest discover -s tests"
+  },
+  "remote_ci": {
+    "enabled": true,
+    "timeout_seconds": 180
+  },
+  "stack": "python"
+}
