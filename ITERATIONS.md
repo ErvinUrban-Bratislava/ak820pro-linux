@@ -26,6 +26,7 @@
 | `v0.19.0` | 2026-10-24 | Done | Modular Package Refactoring (REVIEW.md §18): sysfs discovery (`find_hidraw_devices`/`find_keyboard_hidraw` + helpers) extracted byte-identically from `transport.py` (299 → 229 lines) into new `ak820/discovery.py` (99 lines) — *which* nodes vs *how* to talk over them; identity re-exports keep `transport`/`ak820`/`ak820_ctrl`/`cli` and all mock-patch targets intact; §10.2 refined (fd/io grep stays transport-only; sysfs path strings allowed in `discovery.py`); `discovery → {protocol}` keeps the graph acyclic | `python3 -m unittest` 278/278 + live `probe`/`--dry-run` via shim |
 | `v0.20.0` | 2026-10-24 | Done | Disconnect Recovery & Open-Path Robustness (REVIEW.md §19): D15 `AK820ProDevice.__enter__` leaked raw OSError tracebacks (exit 1) when a node vanished between discovery and open (ENOENT/ENXIO) or the udev rule was missing (EACCES/EPERM) — `_translate` now maps ENOENT/ENXIO with ENODEV → `DeviceDisconnectedError` 75 and open failures → 75/4, m1 close-once now test-locked; D16 `handshake()` swallowed `PermissionDeniedError` as a §3.6 blip and misattributed strike two as a dead pipe (75) — permission errors now fail fast (4); mid-stream/mid-align disconnect (75) never retried like exit-5, never reaches SAVE, digest unrecorded, pipe flag dirty; `FakeTransport(perm_denied=True)` fault | `python3 -m unittest` 300/300 + live `probe`/`--dry-run` via shim |
 | `v0.22.0` | 2026-10-24 | Done | Static Analysis Gate (§14.2): ruff (check + format --check) + mypy on `ak820/` wired into `scripts/lint.sh` and a new CI `lint` job reading one committed `pyproject.toml` baseline (line-length 100, target py310, curated rule families) — local and CI can never drift; all 27 ruff + 37 mypy findings fixed behavior-neutrally (implicit Optionals, `contextlib.suppress`, m4 retry re-expressed via short-circuit `and` with call-count test-lock, explicit `check=False`, transport `__all__` pins §18 re-exports against F401), only two justified noqa sites; `[project.scripts]` intactness regression-locked after the config-insertion trap | `python3 -m unittest` 328/328 + `scripts/lint.sh` GREEN + live `--dry-run`/`--help`/version probes via shim |
+| `v0.23.0` | 2026-10-24 | Done | Optional numpy RGB565 fast path (§4.4): guarded `import numpy as _np` in `screen.py`, vectorized `_rgb565_numpy` (uint16 shifts, `astype("<u2")` little-endian) dispatched behind the unchanged `image_to_rgb565` signature with the v0.8.0 per-row loop kept as numpy-free fallback; worst case 128×128×255 frames **0.488 s → 0.008 s (~60×)**, byte-identical to the reference loop on gradient + noise; `pyproject` mypy override keeps the gate green on numpy-free CI without making numpy a dependency | `python3 -m unittest` 342/342 on both numpy-free system python (5 skips) and numpy venv (0 skips) + `scripts/lint.sh` GREEN + live `--dry-run` exit-8/version probes |
 | `v0.21.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §20): D17 `run <missing-command>` raw `FileNotFoundError` traceback → `FileMissingError` 8 / non-executable → `InvalidFileError` 9 (never 4 — 4 stays "device node rejected us") + D18 Ctrl+C during upload/wait/child dumped a traceback → `main()` catches `KeyboardInterrupt` → friendly line + exit 130 (watch loop keeps its clean local stop) + D19 exit-5 retry discarded the align result and streamed into an un-aligned pipe (m4 bypass) → shared `_ensure_aligned` helper, structurally test-locked + m14 signal death → 128+N (137 not 247) + m15/m16 undocumented exit-1 user errors → documented usage 2; README Exit Codes synced (rows 2/8/9 extended, new 130 row) | `python3 -m unittest` 316/316 + live `probe`/`--dry-run`/exit-2 probes via shim |
 
 ---
@@ -245,9 +246,22 @@
     `tests/test_lint_gate_v022.py` (12 tests: gate end-to-end, pyproject baseline,
     `[project.scripts]` intactness regression, re-export identity, m4 semantics).
 
-- [ ] **`v0.23.0`** — Performance: numpy RGB565 Fast Path (Tier C lane, queued since §14.2):
+- [x] **`v0.23.0`** — Performance: numpy RGB565 Fast Path (Tier C lane, queued since §14.2):
   - Vectorized RGB565 packer in `ak820/screen.py` behind the existing function
     signature; keep the per-row fallback for numpy-free installs (import guard).
   - Measure before/after on a 128×128×255-frame worst case; byte-identical output
     locked by test against the current packer.
   - Verify `python3 -m unittest discover -s tests` passes 100%.
+  - **Shipped:** guarded `try: import numpy as _np / except ImportError: _np = None`
+    in `screen.py`; `_rgb565_numpy` (frombuffer→uint16 reshape, `(r>>3)<<11 |
+    (g>>2)<<5 | b>>3`, `astype("<u2")` little-endian) dispatched by
+    `image_to_rgb565` after the unchanged size guard; v0.8.0 per-row loop
+    extracted verbatim to `_rgb565_rows` as the fallback. Worst case
+    128×128×255 frames: **0.488 s (1.91 ms/frame) → 0.008 s (0.03 ms/frame),
+    ~60×**, byte-identical asserted against the reference loop. numpy stays
+    optional: `pyproject` gains only a `[[tool.mypy.overrides]]`
+    `ignore_missing_imports` for `numpy` so the lint gate stays green on
+    numpy-free CI; `dependencies` untouched. New `tests/test_rgb565_numpy_v023.py`
+    (14 tests: dual-path byte-identity, dispatch routing, size guard on both
+    paths, import-guard + no-hard-dependency source locks); suite runs green
+    both ways — system python (numpy absent, 5 skips) and numpy venv (0 skips).

@@ -9,7 +9,7 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.22.0"  # kept in lockstep with pyproject [project] version
+__version__ = "0.23.0"  # kept in lockstep with pyproject [project] version
 
 from .actions import (
     build_radar_frames,

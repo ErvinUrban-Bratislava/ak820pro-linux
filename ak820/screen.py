@@ -9,6 +9,12 @@ RGB565 packing is the optimized per-row form (§10.4 item 2): `img.tobytes()`
 sliced per row + `struct` little-endian packing instead of the old per-pixel
 `pixels[x, y]` double loop. Output is byte-identical to the reference loop
 (proven by tests/test_screen.py on gradient + noise fixtures).
+
+v0.23.0 (§4.4): when numpy is importable, a vectorized packer replaces the
+per-row loop behind the same `image_to_rgb565` signature. numpy stays an
+*optional* accelerator — the dependency-light positioning is a feature — so
+the import is guarded and numpy-free installs silently keep the per-row path.
+Both paths are byte-identical to the reference loop (tests/test_rgb565_numpy_v023.py).
 """
 
 import functools
@@ -18,6 +24,11 @@ import struct
 from PIL import Image, ImageFont, ImageOps
 
 from .protocol import MAX_FRAMES, SCREEN_HEIGHT, SCREEN_WIDTH
+
+try:  # optional accelerator (§4.4): never a hard dependency
+    import numpy as _np
+except ImportError:  # pragma: no cover — numpy-free installs take the row path
+    _np = None
 
 # render_common aliases (m8): one set of screen constants for all renderers.
 SCREEN_W = SCREEN_WIDTH
@@ -65,18 +76,8 @@ def _load_font(paths, size: int):
     return _load_font_cached(tuple(paths), size)
 
 
-def image_to_rgb565(img) -> bytes:
-    """Convert a 128x128 PIL Image to RGB565 little-endian bytes (32768 bytes).
-
-    Byte-identical to the reference per-pixel loop: rgb565 =
-    ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3), low byte first.
-    """
-    rgb = img.convert("RGB")
-    if rgb.size != (SCREEN_WIDTH, SCREEN_HEIGHT):
-        raise ValueError(
-            f"image_to_rgb565 expects a {SCREEN_WIDTH}x{SCREEN_HEIGHT} image, "
-            f"got {rgb.size[0]}x{rgb.size[1]} (fit it first with fit_image())."
-        )
+def _rgb565_rows(rgb) -> bytes:
+    """Per-row struct packer (v0.8.0, §10.4 item 2) — the numpy-free fallback."""
     raw = rgb.tobytes()
     row_in, row_out = SCREEN_WIDTH * 3, SCREEN_WIDTH * 2
     pack = _U16.pack
@@ -88,6 +89,38 @@ def image_to_rgb565(img) -> bytes:
             for r, g, b in zip(row[0::3], row[1::3], row[2::3])
         )
     return bytes(out)
+
+
+def _rgb565_numpy(rgb) -> bytes:
+    """Vectorized packer (v0.23.0, §4.4), byte-identical to _rgb565_rows:
+    (r & 0xF8) << 8 == (r >> 3) << 11, (g & 0xFC) << 3 == (g >> 2) << 5,
+    b >> 3 unchanged. uint16 intermediates (uint8 << 11 would overflow);
+    astype("<u2") emits the same little-endian byte order as _U16.pack."""
+    a = (
+        _np.frombuffer(rgb.tobytes(), dtype=_np.uint8)
+        .reshape(SCREEN_HEIGHT, SCREEN_WIDTH, 3)
+        .astype(_np.uint16)
+    )
+    packed = ((a[..., 0] >> 3) << 11) | ((a[..., 1] >> 2) << 5) | (a[..., 2] >> 3)
+    return packed.astype("<u2").tobytes()
+
+
+def image_to_rgb565(img) -> bytes:
+    """Convert a 128x128 PIL Image to RGB565 little-endian bytes (32768 bytes).
+
+    Byte-identical to the reference per-pixel loop: rgb565 =
+    ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3), low byte first.
+    Takes the numpy fast path when available (§4.4), else the per-row loop.
+    """
+    rgb = img.convert("RGB")
+    if rgb.size != (SCREEN_WIDTH, SCREEN_HEIGHT):
+        raise ValueError(
+            f"image_to_rgb565 expects a {SCREEN_WIDTH}x{SCREEN_HEIGHT} image, "
+            f"got {rgb.size[0]}x{rgb.size[1]} (fit it first with fit_image())."
+        )
+    if _np is not None:
+        return _rgb565_numpy(rgb)
+    return _rgb565_rows(rgb)
 
 
 def fit_image(img, mode: str = "fill"):

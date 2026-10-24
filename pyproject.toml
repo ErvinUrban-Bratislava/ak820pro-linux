@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "ak820pro-linux"
-version = "0.22.0"
+version = "0.23.0"
 description = "Native Linux CLI tool to control the 128x128 TFT screen, animated GIFs, RGB backlighting, and RTC clock on Ajazz AK820 Pro"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -63,6 +63,12 @@ python_version = "3.10"
 files = ["ak820"]
 mypy_path = "."          # root shims (milestone_radar, widgets) resolve for typing
 follow_imports = "silent"  # gate reports ak820/ only; followed modules supply types
+
+# numpy is an *optional* accelerator (§4.4): CI never installs it, so the
+# guarded `import numpy as _np` in screen.py must not fail the gate there.
+[[tool.mypy.overrides]]
+module = ["numpy", "numpy.*"]
+ignore_missing_imports = true
 
 [project.scripts]
 ak820 = "ak820.cli:main"
