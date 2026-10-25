@@ -121,8 +121,16 @@ class TestFitTextContract(_DrawFixture):
     def test_shrinks_before_marking(self):
         """Shrinking is tried first: a mark only appears when no size can save it."""
         text = "GRANDMOTHER"
-        budget = 70
-        too_wide = text_width(self.draw, text, _load_font(FONT_NARROW_PATHS, 12))
+        # Budget derived from the font that actually loaded, so the contract
+        # holds on any runner (Liberation, DejaVu, or PIL default fallback):
+        # strictly between the size-12 width (shrinking is needed) and the
+        # size-9 width (shrinking can save it without a mark).
+        f12 = _load_font(FONT_NARROW_PATHS, 12)
+        f9 = _load_font(FONT_NARROW_PATHS, 9)
+        w12 = text_width(self.draw, text, f12)
+        w9 = text_width(self.draw, text, f9)
+        budget = (w12 + w9) / 2 if w12 > w9 else w9
+        too_wide = w12
         self.assertGreater(too_wide, budget, "fixture must actually need shrinking")
         font, drawn = fit_text(self.draw, text, FONT_NARROW_PATHS, 12, 9, budget)
         self.assertEqual(drawn, text, "shrinking must save the text before any ellipsis")

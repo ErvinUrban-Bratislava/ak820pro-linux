@@ -42,6 +42,8 @@ FONT_BOLD_PATHS = [
 FONT_NARROW_PATHS = [
     "/usr/share/fonts/truetype/liberation/LiberationSansNarrow-Bold.ttf",
     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSansCondensed-Bold.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
 ]
 FONT_MONO_PATHS = [
     "/usr/share/fonts/truetype/liberation/LiberationMono-Bold.ttf",
@@ -66,7 +68,10 @@ def _load_font_cached(paths: tuple, size: int):
                 return ImageFont.truetype(p, size)
             except OSError:
                 continue
-    return ImageFont.load_default()
+    try:
+        return ImageFont.load_default(size=size)
+    except TypeError:  # Pillow < 10.1: load_default takes no size
+        return ImageFont.load_default()
 
 
 def _load_font(paths, size: int):
