@@ -25,9 +25,15 @@ Contract (mirrors D22's taxonomy at the same single choke point):
   v0.30.0): `idle_mode` 0..19 (mirrors `parse_mode`), brightness/speed 0..5
   and direction 0..3 (mirror the argparse choices). A hand-edited 255 used to
   reach the wire as byte 255 and 256 wrapped silently to 0 via `& 0xFF`.
+* `validate_nonblank` (m27, v0.31.0) is the CLI-side half of the same
+  fix-the-config contract: `events add --short`/`--title` and the `events
+  remove` target must not be empty or whitespace-only (ConfigError 6, the D4
+  precedent). The loader stays permissive for hand-edited data by decision —
+  the CLI can never CREATE a blank-field entry.
 
-`load_events_config` is the only caller; consumers that inject hand-built
-dicts directly (unit-test seams) bypass this and keep their own contract.
+`load_events_config` is the only caller of the coercion above; consumers that
+inject hand-built dicts directly (unit-test seams) bypass this and keep their
+own contract.
 """
 
 import string
@@ -148,6 +154,32 @@ def validate_note(note: str, where: str) -> None:
     for _, field, _, _ in parsed:
         if field not in (None, "years"):
             raise ConfigError(f"{where} uses {{{field}}}; only {{years}} is supported.")
+
+
+def validate_nonblank(value: str, where: str) -> str:
+    """Require a non-blank value; return the stripped text (m27, v0.31.0).
+
+    Public seam: the single home of the non-blank rule for `events add
+    --short`/`--title` and the `events remove` target, so the entry points can
+    never drift (the `validate_note` pattern). m27: `--short` is the id's only
+    source — `--short " "` stored the degenerate id `"-"` and `--short ""` the
+    empty id, each with a blank `short_title` screen label; the `_same_event`
+    empty-needle guard kept them from colliding but the entry was unusable
+    (radar rendered an empty label). Returning the stripped text keeps the
+    normalization single-home too: callers cannot forget to strip, so
+    `--short " DAUGHTER "` yields the canonical id `daughter` and label
+    `DAUGHTER` instead of the dash-padded `-daughter-` (identity must not be
+    sensitive to incidental formatting — m24's class).
+
+    Trust boundary (decided like v0.27.0's render-path decision): the CLI
+    enforces non-blank; `load_events_config` stays permissive for hand-edited
+    configs — rejecting existing hand-edited data would turn every command
+    into exit 6, and the CLI can no longer create such entries.
+    """
+    stripped = value.strip()
+    if not stripped:
+        raise ConfigError(f"{where} must not be empty or whitespace-only.")
+    return stripped
 
 
 def coerce_config_values(cfg: dict, path: str) -> dict:

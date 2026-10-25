@@ -1769,3 +1769,60 @@ version 0.30.0.
 Found while probing: `events add --short` accepts an empty/whitespace-only
 value -> degenerate id (`""` or `"-"`) and a blank screen label -> queued
 for v0.31.0 as m27.
+
+---
+
+## 27. m27 — Blank `--short`/`--title` Stored Degenerate Entries (v0.31.0, 2026-10-25)
+
+Reproduced live against v0.30.0 before fixing (pre-fix evidence:
+`--short " "` persisted `id: "-"` + `short_title: " "`, `--short ""`
+persisted the empty id, `--title " "` persisted a blank title — all exit 0,
+all written to the config). Closed with the D4 precedent: required event
+inputs are validated at the CLI as `ConfigError` (6), never stored
+half-formed.
+
+**m27 — `--short` is the id's only source and was unvalidated.** The
+degenerate entries rendered blank radar labels, and the m24 `_same_event`
+empty-needle guard made them awkward to manage (`remove ""` never matches,
+so the title was the only handle). New public
+`configvalues.validate_nonblank` is the single home of the non-blank rule
+(the `validate_note` pattern), shared by `events add --short`/`--title` and
+the `events remove` target — the entry points can never drift. It returns
+the stripped text, so normalization is single-home too: `--short
+" DAUGHTER "` yields the canonical id `daughter` + label `DAUGHTER` instead
+of the dash-padded `-daughter-` (m24's class — identity must not be
+sensitive to incidental formatting), and `remove " daughter "` is
+symmetric with add.
+
+**DECIDED — `--title` gets the same guard.** A blank title renders blank in
+`events list`/radar and degrades the remove-by-title identity surface; the
+same name-it-never-guess stance applies. **DECIDED — the loader stays
+permissive** (trust boundary, mirrors v0.27.0's render-path decision):
+rejecting hand-edited blank fields at load would turn every command into
+exit 6 for existing configs, and the CLI can no longer create such entries
+— test-locked.
+
+### 27.1 Verification
+
+`tests/test_minors_v031.py` (20 offline tests, zero hardware): table-driven
+exit-6 rejection for six blank spellings x `--short`/`--title` naming the
+flag, the live repro forms (exact v0.30.0 argv) now exit 6 with config
+bytes + mtime stable, friendly message (no traceback); stripped-storage
+locks (padded -> canonical id/label, internal spaces still dash, padded
+re-add is an m20 no-op mtime-stable, padded re-add updates not duplicates);
+remove target: padded target removes, blank target names `remove target`
+at 6, D13 no-match byte-stable regression; `_same_event` empty-needle table
+lock (empty/None needles x five entry shapes; non-empty needles still match
+case-insensitively); `validate_nonblank` unit contract (returns stripped,
+names `where`); loader trust-boundary lock (hand-edited blank title still
+loads); parser surface (valid flags parse, help documents non-empty).
+Suite: 519 -> 539 tests, all green (5 numpy-optional skips);
+`scripts/lint.sh` GREEN. Live CLI probes through the shim: repro argv
+`--short " "`/`--short ""`/`--title " "` -> 6 friendly (were exit-0
+degenerate stores), `remove "  "` -> 6, padded add stored
+`new-year`/`NEW YEAR`/`New Year`, padded remove -> "Removed 1", version
+0.31.0.
+
+Found while probing: whitespace-only `--note` is still stored verbatim
+(`validate_note` passes `"   "` — no placeholders to reject) -> queued for
+v0.32.0 as m28.

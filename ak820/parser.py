@@ -170,12 +170,12 @@ def build_parser():
     ev_a = ev.add_parser("add", help="Add or update a milestone in ak820_events.json")
     ev_a.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
     ev_a.add_argument(
-        "--title", required=True, help='Full event title (e.g. "Daughter\'s Birthday")'
+        "--title", required=True, help='Full event title (non-empty; e.g. "Daughter\'s Birthday")'
     )
     ev_a.add_argument(
         "--short",
         required=True,
-        help="Short label for 128x128 screen (max ~10 chars, e.g. DAUGHTER)",
+        help="Short label for 128x128 screen (max ~10 chars, non-empty, e.g. DAUGHTER)",
     )
     ev_a.add_argument("--date", required=True, help="Date in YYYY-MM-DD or MM-DD format")
     ev_a.add_argument(

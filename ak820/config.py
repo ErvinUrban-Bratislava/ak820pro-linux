@@ -70,15 +70,23 @@ def cmd_events(args):
         return 0
     elif action == "add":
         events.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date
+        # m27 (v0.31.0): --short is the id's only source — an empty or
+        # whitespace-only value stored the degenerate id ""/"-" and a blank
+        # screen label. Non-blank-after-strip is validated at the CLI
+        # (ConfigError 6, the D4/--note precedent); validate_nonblank returns
+        # the stripped text, so the canonical id/label normalization is
+        # single-home and callers cannot forget to strip.
+        short = configvalues.validate_nonblank(args.short, f"--short {args.short!r}")
+        title = configvalues.validate_nonblank(args.title, f"--title {args.title!r}")
         note = getattr(args, "note", None)
         if note is not None:
             # v0.27.0: --note obeys the same {years}-only rule as the config
             # loader (configvalues.validate_note is the single home) — a bad
             # placeholder is ConfigError (6) at the CLI, never a render KeyError.
             configvalues.validate_note(note, f"--note {note!r}")
-        ev_id = args.short.lower().replace(" ", "-")
+        ev_id = short.lower().replace(" ", "-")
         old_events = cfg.get("events", [])
-        prior = next((e for e in old_events if _same_event(e, ev_id, args.title)), None)
+        prior = next((e for e in old_events if _same_event(e, ev_id, title)), None)
         # m25 (v0.30.0): rebuilding from the six schema fields dropped unknown
         # hand-added fields (icon, priority, ...) silently on every update —
         # start from the prior entry and overwrite the schema fields instead.
@@ -88,15 +96,15 @@ def cmd_events(args):
         entry.update(
             {
                 "id": ev_id,
-                "title": args.title,
-                "short_title": args.short.upper(),
+                "title": title,
+                "short_title": short.upper(),
                 "date": args.date,
                 "category": args.category,
             }
         )
         if note is not None:
             entry["note"] = note
-        kept = [e for e in old_events if not _same_event(e, ev_id, args.title)]
+        kept = [e for e in old_events if not _same_event(e, ev_id, title)]
         kept.append(entry)
         target_path = cfg_path or events.get_default_events_path()
         if kept == old_events:
@@ -110,18 +118,22 @@ def cmd_events(args):
         print(f"Saved event '{args.title}' ({args.date}) to {target_path}")
         return 0
     elif action == "remove":
+        # m27 (v0.31.0): the target goes through the same non-blank rule as
+        # add's flags (one home) — an empty/whitespace target is named as such
+        # instead of falling through to the D13 no-match message. Stripping
+        # keeps remove symmetric with add's stripped id/title (m24's class:
+        # identity must not be sensitive to incidental formatting).
+        target = configvalues.validate_nonblank(args.target, f"remove target {args.target!r}")
         before = len(cfg.get("events", []))
         # m24 (v0.30.0): id matched case-sensitively while title matched
         # case-insensitively — one identity rule now, shared with `add`.
-        cfg["events"] = [
-            e for e in cfg.get("events", []) if not _same_event(e, args.target, args.target)
-        ]
+        cfg["events"] = [e for e in cfg.get("events", []) if not _same_event(e, target, target)]
         if len(cfg["events"]) == before:
             # D13 (v0.18.0): a no-match remove used to print "Removed 0 event(s)."
             # and exit 0 — a typo looked like success, and the config file was
             # rewritten for nothing. Fail friendly (exit 6) and leave the file alone.
             raise ConfigError(
-                f"No event with id or title matching {args.target!r} — check `ak820 events list`."
+                f"No event with id or title matching {target!r} — check `ak820 events list`."
             )
         events.save_events_config(cfg, cfg_path)
         print(f"Removed {before - len(cfg['events'])} event(s).")

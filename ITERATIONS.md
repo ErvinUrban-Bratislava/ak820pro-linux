@@ -34,6 +34,7 @@
 | `v0.29.0` | 2026-10-25 | Done | Comprehensive Re-Audit (REVIEW.md §25, cadence 5): D25 non-object `backlight` section (raw AttributeError exit 1 at every idle restore, live-proven on hardware) + D26 `"events": null` (passed D22's `is not None` guard; `cfg.get("events", [])` returns the null, not the default — raw TypeError exit 1 on list/add/radar) both closed at the `load_events_config` choke point as ConfigError 6 naming section + JSON kind (`configvalues.kind` promoted public — one vocabulary with m18/m21); m22 `--dry-run probe` no longer swallows the interface report (probe sends zero USB); AST anti-recurrence invariant forbids None-comparison guards at the choke point; README Architecture table synced from the pre-v0.16 eight-module world to all 24 modules + 3 shims | `python3 -m unittest` 494/494 + `scripts/lint.sh` GREEN + live real-hardware exit-6/`--dry-run probe` probes |
 | `v0.28.0` | 2026-10-25 | Done | m21 closed — `idle_rainbow` bool coercion at the `configvalues` choke point: new `_as_bool` + `_IDLE_BOOL_FIELDS` (bools pass; `0`/`1` ints and `"true"/"false"/"1"/"0"` text case/whitespace-insensitive coerce losslessly; `"yes"`, `2`, `-1`, `1.0`, `null`, list/object → `ConfigError` 6 naming `backlight.idle_rainbow` — same taxonomy as m18); the m21 repro `"false"` now writes rainbow byte 0 (was 1); anti-recurrence invariant locks every `get_idle_backlight_cfg` `bl.get` field into a coercion list; README exit-6 row synced | `python3 -m unittest` 469/469 + `scripts/lint.sh` GREEN + live real-hardware probes (`"false"` → 0/coerced, `"yes"` → 6 both seams) |
 | `v0.30.0` | 2026-10-25 | Done | Carried §25 minors: m23 idle int bounds at the `configvalues` choke point (bounds in `protocol.py` feed loader AND parser choices — one home; `_IDLE_INT_FIELDS` derived from `_IDLE_INT_RANGES` so an unbounded idle int field is unrepresentable; out-of-range -> ConfigError 6 naming field + range) + m24 one case-insensitive id-or-title identity rule (`_same_event`) shared by add + remove + m25 re-add preserves unknown hand-added fields (`dict(prior)` rebuild, `--note` wins, m20 no-op extends) + m26 `non_negative_float` rejects negative `--seconds`/`--watch`/`--dwell` at parse time (usage 2) | `python3 -m unittest` 519/519 + `scripts/lint.sh` GREEN + live real-hardware exit-6/exit-2/CRUD probes |
+| `v0.31.0` | 2026-10-25 | Done | m27 closed — blank `--short`/`--title`/remove-target rejected at the CLI: new public `configvalues.validate_nonblank` (ConfigError 6, D4 precedent) is the single home of the non-blank rule shared by `events add` flags and the `events remove` target; returns the stripped text so padded values store the canonical id/label (`" DAUGHTER "` -> `daughter`/`DAUGHTER`, never `-daughter-`) and remove stays symmetric (m24's class); DECIDED: `--title` gets the same guard, loader stays permissive for hand-edited data (trust boundary test-locked); `_same_event` empty-needle semantics table-locked; README exit-6 row synced | `python3 -m unittest` 539/539 + `scripts/lint.sh` GREEN + live shim probes (repro forms -> 6, padded round-trip canonical) |
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
 
 ---
@@ -492,7 +493,7 @@
     `--dry-run probe` intact, version 0.30.0. Found while probing: m27
     queued below.
 
-- [ ] **`v0.31.0`** — m27 (found during the v0.30.0 probes): `events add
+- [x] **`v0.31.0`** — m27 (found during the v0.30.0 probes): `events add
     --short` accepts an empty or whitespace-only value — `--short " "`
     yields the degenerate id `"-"` and `--short ""` the empty id, with a
     blank `short_title` screen label; the v0.30.0 `_same_event` empty-
@@ -502,4 +503,32 @@
     precedent — `--short` is the id's only source), lock the empty-needle
     semantics of `_same_event` against regression, and decide whether
     `--title` deserves the same strip guard.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - Closed in v0.31.0: new public `configvalues.validate_nonblank` —
+    single home of the non-blank rule (ConfigError 6, D4 precedent),
+    shared by `events add --short`/`--title` and the `events remove`
+    target; returns the stripped text, so padded values store the
+    canonical id/label (`" DAUGHTER "` -> `daughter`/`DAUGHTER`, never
+    `-daughter-`) and remove targets stay symmetric (m24's class).
+    DECIDED: `--title` gets the same guard; the loader stays permissive
+    for hand-edited data (trust boundary, test-locked). `_same_event`
+    empty-needle semantics table-locked. README exit-6 row + Testing
+    count synced; REVIEW.md §27. `tests/test_minors_v031.py` (20 offline
+    tests, zero hardware: repro argv -> 6 with bytes + mtime stable,
+    stripped-storage locks, remove symmetry, needle table, unit contract,
+    trust-boundary lock). Suite 519 -> 539; `scripts/lint.sh` GREEN;
+    live CLI probes via shim (repro forms -> 6 where degenerate stores
+    exited 0, padded round-trip canonical, blank remove target -> 6),
+    version 0.31.0. Found while probing: m28 queued below.
+
+- [ ] **`v0.32.0`** — m28 (found during the v0.31.0 probes): `events add
+    --note "   "` stores the whitespace verbatim — `validate_note` passes
+    it (no placeholders to reject), so the entry persists a blank note
+    (live-proven: stored `'   '`). Decide: reject blank as ConfigError 6
+    via the existing `validate_nonblank` (one rule, one home), or treat
+    blank as absent (preserve the prior note on re-add, omit on fresh
+    add). While there, revisit the v0.31.0 loader trust boundary: should
+    `load_events_config` reject blank `id`/`title`/`short_title` in
+    hand-edited configs, or keep the CLI-only boundary (currently
+    test-locked)?
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
