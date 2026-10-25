@@ -44,6 +44,7 @@
 | `v0.37.0` | 2026-10-25 | Done | m32 closed (row added retroactively in v0.38.0 — the v0.37.0 iteration updated the queue but not this table): media-header tags `▶ PLAYING`/`⏸ PAUSED` rendered TOFU on the production font (no catalog font carries `⏸` at all — the fact that decided the fix); tags became catalog-universal ASCII `PLAYING`/`PAUSED`/`MEDIA`; the drift lock is STATIC (every drawn literal ASCII except a probed allow-list `…`/`•`/`°`, AST-extracted from all renderers) so a tofu literal can never be added; minors: `card --save-preview` (same validation seam as live), `events list` flattens multi-line notes at the PRINT seam only (`configvalues.flatten_for_display`, PIL-free twin table-locked), `--force` help one-home | `python3 -m unittest` 726/726 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.38.0` | 2026-10-25 | Done | The glyph audit's three remaining edges closed: the last-resort `load_default` fallback is a typed `FontMissingError` (exit 10) instead of a silent tofu degrade (measured: that face renders `•` as `.notdef`) — the allow-list promise now covers every font `_load_font` can return; locale-dependent `%b` drawn text replaced by the fixed C-locale month table in new PIL-free leaf `ak820/dates.py` (one home — cards may not import events, events stay PIL-free — `%b` AST-banned from shipped literals); user text (MPRIS/notes) DECIDED pass-through, no render-seam substitution — the `.notdef` box IS the mark, boundary locked behaviorally | `python3 -m unittest` 750/750 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.39.0` | 2026-10-25 | Done | The print seam's own m31b closed: `events list`/`backlight list` pad every dynamic column by DISPLAY width via new stdlib-only leaf `ak820/textwidth.py` (east_asian_width W/F = 2 cells — char-count padding shifted every following column of a CJK row, live-reproved; `--json` and stored bytes keep raw codepoints); numeric-strftime exemption class documented in `dates.py` + both sites and pinned by a directive allow-list; `ak820-smartd` DECIDED to stay OUT of the repo (personal-data coupling), boundary documented in README | `python3 -m unittest` 781/781 + `scripts/lint.sh` GREEN + live device-free probes (CJK table aligned, presets table byte-stable) |
+| `v0.43.0` | 2026-10-25 | Done | The single-line vocabulary's remaining class closed (m37): bidi format characters — Unicode's 12 Bidi_Control codepoints, listed explicitly in both twin homes (Cf wholesale weighed and REJECTED: it holds the joiners v0.42 made meaningful — family emoji stay valid, pinned) — rejected at the CLI (exit 6, names bidi + order + fix; check order break→bidi→control so an ORDER defect never gets the tab-stop message) and flattened at the display seam (m31b+m32 dual verbatim: stored bytes + `--json` raw, loader permissive); union membership locked as a battery so it cannot drift in either direction. SCREEN ASSUMPTION DISPROVED BY REAL RENDER: this Pillow is a Raqm build and DOES apply bidi shaping (`A\u202eCB` == `ABC` pixel-identical) — the board is protected by the flatten, not PIL naivety; machine-independent facts pinned (zero advance, defined order world, `fit_text` never hands bidi to PIL); raw-bidi 1-cell width documented as residual (no shipped path measures it) -> Raqm build audit queued v0.44.0 | `python3 -m unittest` 882/882 + `scripts/lint.sh` GREEN (ruff+mypy) + live device-free probes (CLI bidi -> 6 bytes-stable, hand-edited raw bytes load + print aligned + `--json` raw, `backlight list` offline, zero USB touched, smartd state untouched) |
 | `v0.42.0` | 2026-10-25 | Done | The width rule's last misalignment class closed (m36): `display_width` now counts CLUSTERS, not codepoints — a U+200D-joined run holding an emoji is ONE glyph (its widest member), while marks, variation selectors (`FE00..FE0F`) and skin-tone modifiers (`1F3FB..1F3FF`) ride the base cell (listed explicitly, never inferred from the interpreter's Unicode table); an all-narrow run SUMS, which is what keeps v0.39's `a\u200db` = 2 pin alive. Live-reproved: `Family 👨\u200d👩\u200d👧 Reunion` measured 21 cells, renders 17. Two false starts corrected empirically before shipping: an RI pair needs NO cluster rule (each is Neutral → the pair already measured a flag's 2 cells; collapsing it would have broken it), and a joiner binds nothing across whitespace (the flatten seam creates `👨\u200d 👩` = 4 vs the true 5). Residuals (VS16 promotion, keycaps, stray ZWJ, font-less terminals) documented AND pinned as decided behavior; trailing-column exemption class documented at its home + both row sites and pinned three ways (ASCII/bounded vocabularies, closed producer chain, vacuity-proven AST lock) | `python3 -m unittest` 853/853 + `scripts/lint.sh` GREEN (ruff+mypy) + live device-free probes (emoji/CJK/ASCII rows all start NEXT DATE at cell 23, preset table byte-stable, zero USB touched) |
 | `v0.41.0` | 2026-10-25 | Done | CI self-heal (m35): `backlight list` required the device it merely describes — the v0.40 device-free test passed locally ONLY because hardware was plugged in; hardware-less CI (all four Pythons) died with exit 3. Routed offline in `_dispatch` before the --dry-run block (m22's probe precedent: an informational command that sends zero USB bytes must not require the device it describes; its output IS the result, not a payload preview), superseding v0.29's "nothing to preview" pin for `list` (moved to `backlight set --preset`); class lock — an AST scan forces every device-bound CLI call in the shipped suite to mock the device in its enclosing function (offline argv skipped, argparse-rejection site exempt by name, lock vacuity-proven) | `python3 -m unittest` 818/818 + `scripts/lint.sh` GREEN (ruff+mypy) + device-free probes (list prints with discovery raising, dry-run table, `set` keeps the line, zero USB, smartd active) |
 | `v0.40.0` | 2026-10-25 | Done | The print seam's last unaligned input closed (m34): TAB is rejected at the CLI and flattened at the display seam — the vocabulary widened from line breaks to ALL control characters (`[\x00-\x1f\x7f-\x9f\u2028\u2029]`: a tab advances to a position-dependent tab stop and every control char has a terminal-defined advance, live-reproved `A\tB`/`A\x01B` shifting every following cell), the m31b+m32 dual structure kept (CLI 6 / permissive loader), twins locked equal; table geometry single-homed in new `ak820/tables.py` (pure formatters: width constants are the one home, the header and every pad name them, the rule is derived from the header via new `textwidth.rule` — 65/69 cells replacing the undriven `"-" * 68`/`"-" * 80`; `--json` cannot reach flattening/padding by construction) | `python3 -m unittest` 810/810 + `scripts/lint.sh` GREEN (ruff+mypy) + live device-free probes (tab/CJK rows aligned, `--json` raw, presets byte-stable, zero USB, smartd active) |
@@ -996,7 +997,7 @@
     screen-side boundary, AST lock + vacuity proof).
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
 
-- [ ] **`v0.43.0`** — the single-line vocabulary's remaining class: BIDI
+- [x] **`v0.43.0`** — the single-line vocabulary's remaining class: BIDI
     FORMAT CHARACTERS (found while probing v0.42.0). Live-reproved:
     `configvalues.validate_single_line` ACCEPTS `Trip\u202eHome` (U+202E
     RIGHT-TO-LEFT OVERRIDE) with exit 0 and `display_width` counts it as 9
@@ -1017,4 +1018,62 @@
     PIL draws in logical order with no bidi shaping, so the 128x128 board is
     unaffected — VERIFY that with a real render and record the finding at the
     seam rather than assuming it.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - CLOSED (v0.43.0, m37): the vocabulary is Unicode's Bidi_Control property —
+    all 12 codepoints (U+061C, U+200E/F, U+202A..U+202E, U+2066..U+2069),
+    listed EXPLICITLY in both twin homes (v0.38/v0.42: an accident is never a
+    promise; `unicodedata` exposes no Bidi_Control property to read). Cf
+    wholesale was weighed and REJECTED: it holds the joiners v0.42 just made
+    meaningful (ZWJ/ZWNJ/WJ/BOM — the family emoji must stay valid, pinned)
+    and format chars that never reorder (soft hyphen). m31b+m32 dual kept
+    verbatim: CLI refuses what it would CREATE (exit 6, names bidi + order +
+    fix), the permissive loader's data is flattened at the display seam
+    (stored bytes and `--json` stay raw, m27/m28 boundary). Check order is
+    break → bidi → control: the widened union matches bidi too, and answering
+    an ORDER defect with the tab-stop message would misdescribe it. Twins
+    locked equal three ways (pattern identity + search battery + flatten
+    parity) AND the union's exact membership locked as a battery — the union
+    may not drift in either direction (joiners must NOT match). SCREEN-SIDE
+    VERIFICATION FAILED THE ASSUMPTION: this Pillow is a Raqm build
+    (`features.check("raqm")` True) and DOES apply the bidi algorithm —
+    `A\u202eCB` renders pixel-identical to `ABC` (live-measured). The board is
+    protected by the flatten, not by PIL naivety; the test pins the
+    machine-independent facts (zero advance + one of the two defined order
+    worlds + `fit_text` never hands bidi to PIL) so CI Pythons without Raqm
+    stay green. `display_width` counting raw bidi as 1 cell DECIDED as a
+    documented residual (pinned): no shipped path measures raw bidi — the
+    table seam flattens first and the flattened space IS the 1 cell counted.
+    Budget forcing function: both twin homes sat at 297/299 lines, so m34/m28/
+    m27/m30/m29 historical narration was compressed out of the docstrings (the
+    decisions and live-repros stay; the narrative lives here).
+    tests/test_minors_v043.py (29 offline tests, zero hardware: all 12 code-
+    points rejected with bidi+order named, message ordering break>bidi>control,
+    joiners/family emoji pass unchanged through validate AND flatten, union
+    membership battery (drift locked both directions), bidi subset locked
+    inside both homes' union, flatten twins agree + idempotent + vocabulary-
+    free, CLI events/card flags -> 6 with config bytes stable, hand-edited raw
+    bytes load + print aligned + `--json`/stored raw, real-render screen probe
+    (zero advance, defined order world, non-vacuity), `fit_text` strips bidi,
+    vocabulary exact-set + one-assignment AST locks, screen/events-domain
+    import edge, raw-bidi width residual pinned).
+
+- [ ] **`v0.44.0`** — the screen side's text engine is BUILD-DEPENDENT (found
+    while probing v0.43.0). Live-measured: this machine's Pillow is a Raqm
+    build (`features.check("raqm")` True) and applies the Unicode bidi
+    algorithm — `A\u202eCB` renders pixel-identical to `ABC`. The v0.43 queue
+    assumption "PIL draws in logical order with no bidi shaping" was FALSE
+    here; the 128x128 board survived only because `flatten_lines` strips the
+    vocabulary before PIL sees it (now pinned by `fit_text` never handing
+    bidi to PIL). Raqm shapes more than bidi (ligatures, GPOS kerning, script
+    shaping), so drawn metrics AND glyph order for exotic text depend on
+    Pillow's build flags — v0.38's exotic-text pass-through decision predates
+    this fact and was recorded assuming one engine. Audit and DECIDE:
+    (a) probe raqm availability on every runner (local + all four CI Pythons)
+    and record which render world each lives in at the seam; (b) VERIFY — not
+    assume — that the allow-list glyphs (`•` `…` `°`) and every fixed drawn
+    literal render byte-identically under both engines (they are ASCII, so
+    likely stable, but v0.38's bullet proved "likely" is not "locked"); (c)
+    DECIDE and record at the seam: pin the build requirement (Raqm in/out) or
+    document per-build variance as accepted behavior — the ambiguous=1 stance,
+    a build setting is never a data bug.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

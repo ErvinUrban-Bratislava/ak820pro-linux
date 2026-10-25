@@ -55,6 +55,12 @@ and not an oversight — the ambiguous=1 stance again):
   draw both (3). Defined sequences are the common case and win that trade.
 * A terminal without emoji fonts draws the members of a joined run separately.
   Font availability is a machine setting, not a data bug.
+* Bidi format characters (m37, v0.43.0) count as 1 cell here although a
+  terminal draws them invisibly (0). No shipped path measures raw bidi: the
+  table seam flattens them to a space BEFORE `pad`/`rule` sees the text, and
+  the flattened space is exactly the 1 cell counted — the number matches what
+  is printed. Their defect is ORDER, which no width rule can model; that is
+  why the fix is rejection at the creation seam, never a cell count here.
 
 Why a leaf module: the consumers are print seams (`config.py`'s events table,
 `backlight.py`'s presets table), neither of which may pull PIL, and the rule is

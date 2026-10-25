@@ -70,9 +70,8 @@ def _load_font_cached(paths: tuple, size: int):
                 return ImageFont.truetype(p, size)
             except OSError:
                 continue
-    # v0.38.0: the silent `load_default` fallback is GONE — that Pillow face
-    # renders the allow-list bullet as tofu (measured); the full why lives on
-    # FontMissingError. Refuse loudly and name the fix, never degrade to boxes.
+    # v0.38.0: the silent `load_default` fallback is GONE — that face renders
+    # the allow-list bullet as tofu (measured; full why: FontMissingError).
     raise FontMissingError(
         f"No usable AK820 display font. Tried: {', '.join(paths) or '(empty catalog)'}. "
         "Install fonts-liberation or fonts-dejavu-core (see FontMissingError)."
@@ -87,23 +86,25 @@ def _load_font(paths, size: int):
     return _load_font_cached(tuple(paths), size)
 
 
-# m30 (v0.34.0): the mark that says "there was more". Every font in the catalogs
-# above carries the glyph (locked by tests/test_minors_v034.py), and it is a
-# single character, so the mark costs less width than "..." at every size.
+# m30 (v0.34.0): the mark that says "there was more". Every catalog font carries
+# it (locked by tests/test_minors_v034.py) and it costs less width than "...".
 ELLIPSIS = "…"
 
-# m31 (v0.35.0): a single-line box must stay single-line. m30 gave `fit_text`
-# horizontal containment but never asked how many lines a string draws: PIL
-# breaks on `\n`, so one embedded newline split a fitted line in two and a
-# *centred* box drew its first line above the panel (live-measured). The fix
-# is at the single home of containment: every boundary `str.splitlines()`
-# knows flattens to a space before measuring. m34 (v0.40.0): the vocabulary
-# widened to ALL control characters (Cc) — a TAB advances to a position-
-# dependent stop and no control character has a predictable advance. Text
-# free of control characters is returned byte-for-byte identical.
+# m31 (v0.35.0): a single-line box must stay single-line — PIL breaks on `\n`,
+# so one embedded newline split a fitted line and a *centred* box drew its
+# first line above the panel (live-measured). The fix is at the single home of
+# containment: every control character flattens to a space before measuring
+# (m34: the whole Cc class has no predictable advance). m37 (v0.43.0): the 12
+# Unicode Bidi_Control codepoints (Cf) join — VERIFIED with a real render, not
+# assumed: this Pillow is a Raqm build and DOES apply the bidi algorithm
+# (`A\u202eCB` renders pixel-identical to `ABC`), so the board is protected by
+# THIS flatten, not by PIL naivety (non-Raqm builds draw logical order). Twin
+# of `configvalues._CONTROL_RE` (§10.2). Probe: tests/test_minors_v043.py.
 _LINE_BREAK_RE = re.compile("[\\n\\r\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029]+")
 _WS_RUN_RE = re.compile(r"\s+")
-_CONTROL_RE = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+")  # Cc + Zl/Zp
+_CONTROL_RE = re.compile(
+    "[\\x00-\\x1f\\x7f-\\x9f\\u061c\\u200e\\u200f\\u2028\\u2029\\u202a-\\u202e\\u2066-\\u2069]+"
+)
 
 
 def flatten_lines(text: str) -> str:
@@ -120,8 +121,8 @@ def flatten_lines(text: str) -> str:
 def text_width(draw, text: str, font) -> float:
     """Drawn width of `text` in pixels (bbox, matching every renderer's own math).
 
-    float because that is what PIL's `textbbox` reports; every renderer already
-    compared those floats against its box budget.
+    float because that is what PIL's `textbbox` reports; renderers already
+    compare those floats against their box budgets.
     """
     if not text:
         return 0.0
@@ -179,11 +180,10 @@ def fit_text(draw, text: str, paths: list[str], max_size: int, min_size: int, ma
     with the same font the old helper picked, so existing renders stay
     byte-identical; only text that used to be clipped changes.
 
-    m31 (v0.35.0): containment is on BOTH axes. The text is flattened to a single
-    line first (see `flatten_lines`), so a single-line box can never be handed a
-    multi-line string that escapes it vertically — the custom card's centred value
-    drew its first line ten px above the panel before this. Newline-free text is
-    untouched, so the byte-identical guarantee above still holds.
+    m31 (v0.35.0): containment is on BOTH axes — the text is flattened to one
+    line first (see `flatten_lines`), so a box can never be handed a multi-line
+    string that escapes it vertically. Vocabulary-free text is untouched, so
+    the byte-identical guarantee above still holds.
     """
     text = flatten_lines(text)
     for sz in range(max_size, min_size - 1, -1):
