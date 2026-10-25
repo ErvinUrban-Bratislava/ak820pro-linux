@@ -65,6 +65,18 @@ def _dispatch(args):
     if args.command == "media" and getattr(args, "save_preview", None):
         return cmd_media_preview(args)
 
+    # m22 (v0.29.0 re-audit, §25): probe is pure sysfs observation — it opens
+    # no hidraw node and sends zero USB bytes — so --dry-run must not swallow
+    # its output. `--dry-run probe` used to print "nothing to preview" instead
+    # of the interface report, which is the exact thing a dry-run user wants
+    # to see before a live command. Route it before the dry-run block.
+    if args.command == "probe":
+        tft, ctrl = find_hidraw_devices()
+        log.debug("hidraw discovery: tft=%s ctrl=%s", tft, ctrl)
+        print(f"TFT Data Interface (0xFF68):    {tft or 'NOT FOUND'}")
+        print(f"Control/RTC Interface (0xFF13): {ctrl or 'NOT FOUND'}")
+        return 0
+
     # B7: --dry-run renders the exact payload and reports digest + chunk count
     # without ever opening a hidraw node — zero USB traffic, works headless.
     if args.dry_run:
@@ -80,10 +92,6 @@ def _dispatch(args):
 
     tft, ctrl = find_hidraw_devices()
     log.debug("hidraw discovery: tft=%s ctrl=%s", tft, ctrl)
-    if args.command == "probe":
-        print(f"TFT Data Interface (0xFF68):    {tft or 'NOT FOUND'}")
-        print(f"Control/RTC Interface (0xFF13): {ctrl or 'NOT FOUND'}")
-        return 0
     if not ctrl or (args.command in TFT_COMMANDS and not tft):
         raise DeviceNotFoundError(
             "AK820 Pro USB HID interfaces not found. Ensure the keyboard is connected via USB cable."

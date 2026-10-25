@@ -92,6 +92,16 @@ def load_events_config(config_path: str | None = None) -> dict:
     not a list, an entry not an object) used to crash every consumer
     (`cfg.get`/`ev.get` AttributeError, IsADirectoryError) with exit 1. All of
     them are fix-the-config errors -> ConfigError (exit 6), the D4/D5/m7 class.
+
+    D25/D26 (v0.29.0 re-audit, §25) extend the same section-shape rule to the
+    two violations D22's guard left open: `"events": null` passed the
+    `is not None` guard but every consumer reads `cfg.get("events", [])` —
+    which returns the null, not the default — and crashed with a raw TypeError
+    (exit 1); a non-object `backlight` section (string/list/number/null) was
+    never checked at all and crashed every idle-restore consumer
+    (`get_idle_backlight_cfg`'s `bl.get`) with a raw AttributeError. A present
+    section must have its declared type — missing stays fine (defaults apply),
+    null is named (`got null`), never guessed into an empty list/object.
     """
     path = config_path or get_default_events_path()
     if not os.path.exists(path):
@@ -109,20 +119,29 @@ def load_events_config(config_path: str | None = None) -> dict:
         raise ConfigError(f"Cannot read events config {path}: {exc.strerror or exc}") from exc
     if not isinstance(cfg, dict):
         raise ConfigError(
-            f"Events config {path} must contain a JSON object, got {type(cfg).__name__}."
+            f"Events config {path} must contain a JSON object, got {configvalues.kind(cfg)}."
         )
-    events = cfg.get("events")
-    if events is not None:
-        if not isinstance(events, list):
+    # D26 (v0.29.0): `in cfg`, not `is not None` — a present-but-null `events`
+    # reaches consumers through `cfg.get("events", [])` as None (the default
+    # only covers an ABSENT key) and crashes every countdown/add loop.
+    if "events" in cfg and not isinstance(cfg["events"], list):
+        raise ConfigError(
+            f"Events config {path}: 'events' must be a list, got {configvalues.kind(cfg['events'])}."
+        )
+    for idx, ev in enumerate(cfg.get("events") or []):
+        if not isinstance(ev, dict):
             raise ConfigError(
-                f"Events config {path}: 'events' must be a list, got {type(events).__name__}."
+                f"Events config {path}: events[{idx}] must be an object, "
+                f"got {configvalues.kind(ev)}."
             )
-        for idx, ev in enumerate(events):
-            if not isinstance(ev, dict):
-                raise ConfigError(
-                    f"Events config {path}: events[{idx}] must be an object, "
-                    f"got {type(ev).__name__}."
-                )
+    # D25 (v0.29.0): the idle-backlight section is read with `.get` by every
+    # idle restore (status/run/backlight) — a non-object here is the same
+    # fix-the-config class, named at load instead of an AttributeError at use.
+    if "backlight" in cfg and not isinstance(cfg["backlight"], dict):
+        raise ConfigError(
+            f"Events config {path}: 'backlight' must be an object, "
+            f"got {configvalues.kind(cfg['backlight'])}."
+        )
     # m18 (v0.26.0, §21): value-type coercion at the same choke point as the
     # D22 shape checks — wrong-typed field values (int title, null category,
     # stray {placeholder} note, string idle_mode) never reach a consumer.

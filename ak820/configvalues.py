@@ -42,8 +42,13 @@ _TRUE_TEXTS = ("true", "1")
 _FALSE_TEXTS = ("false", "0")
 
 
-def _kind(value: object) -> str:
-    """JSON-flavoured type name for error messages (null, not NoneType)."""
+def kind(value: object) -> str:
+    """JSON-flavoured type name for error messages (null, not NoneType).
+
+    Public (v0.29.0): shared with `events.load_events_config`'s D22/D25/D26
+    section-shape checks so every config violation names the offending value
+    in the spelling the user typed it with — one vocabulary, one home.
+    """
     return "null" if value is None else type(value).__name__
 
 
@@ -53,7 +58,7 @@ def _as_text(value: object, where: str, path: str) -> str:
         return value
     if isinstance(value, (int, float)):  # bool included: int subclass
         return str(value)
-    raise ConfigError(f"Events config {path}: {where} must be a string, got {_kind(value)}.")
+    raise ConfigError(f"Events config {path}: {where} must be a string, got {kind(value)}.")
 
 
 def _as_int(value: object, where: str, path: str) -> int:
@@ -67,7 +72,7 @@ def _as_int(value: object, where: str, path: str) -> int:
             return int(value.strip())
         except ValueError:
             pass
-    raise ConfigError(f"Events config {path}: {where} must be an integer, got {_kind(value)}.")
+    raise ConfigError(f"Events config {path}: {where} must be an integer, got {kind(value)}.")
 
 
 def _as_bool(value: object, where: str, path: str) -> bool:
@@ -91,7 +96,7 @@ def _as_bool(value: object, where: str, path: str) -> bool:
             return True
         if text in _FALSE_TEXTS:
             return False
-    raise ConfigError(f"Events config {path}: {where} must be a boolean, got {_kind(value)}.")
+    raise ConfigError(f"Events config {path}: {where} must be a boolean, got {kind(value)}.")
 
 
 def validate_note(note: str, where: str) -> None:

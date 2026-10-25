@@ -1623,3 +1623,69 @@ shim: `events list --config F` / `status idle --config F` with
 6 naming the field on both surfaces, version 0.28.0.
 
 ---
+
+## 25. Comprehensive Re-Audit — v0.25–v0.28 Surface Growth (v0.29.0, 2026-10-25)
+
+Cadence-5 re-audit (last full: §21/v0.24.0): walked every error, operand and
+signal path across the surface the last four iterations grew — the monolith
+split shims, `--config` on every consumer, `--note`, `presets.py`, and the
+bool coercion — reproducing every suspect live (real hardware + shim) before
+touching code. Parity gates re-verified green: README Exit Codes ↔
+`errors.py` ↔ `DOCUMENTED_CODES`, §10.2 dependency rule, <300-line budget
+(24 package modules + 3 shims), shim identity.
+
+**D25 — non-object `backlight` section → raw AttributeError (exit 1).** D22
+shape-checked the `events` list and its entries but never the `backlight`
+section itself. A hand-edited `"backlight": "warm"` (or list/number/null)
+passed the loader untouched and crashed every idle restore —
+`get_idle_backlight_cfg`'s `bl.get` — with a raw AttributeError; live-proven
+on real hardware via `status idle --config F`. Now rejected at the single
+choke point: a present `backlight` must be an object, else `ConfigError` (6)
+naming the section and the JSON kind (`got null`, never `got NoneType`).
+
+**D26 — `"events": null` → raw TypeError (exit 1).** D22's guard read
+`if events is not None:` — null slipped through as "absent", but every
+consumer reads `cfg.get("events", [])`, and the default only covers an
+ABSENT key: the null reached the countdown/add loops and crashed `events
+list`, `events add`, and every radar render with `TypeError: 'NoneType'
+object is not iterable` (live-proven on all three seams). The guard is now
+`"events" in cfg and not isinstance(...)` — present must be a list, null is
+named, never guessed into `[]`. Missing sections stay fine (defaults apply).
+
+**m22 — `--dry-run probe` swallowed the interface report.** probe opens no
+hidraw node and sends zero USB bytes, yet the dry-run block intercepted it
+with "nothing to preview" — the exact output a dry-run user wants. probe now
+routes before the dry-run block; non-render commands keep the documented
+message.
+
+**Doc drift found by the walk:** the README Architecture table still listed
+the pre-v0.16 eight-module world — synced to all 24 modules + 3 shims; the
+Testing section's "140+ tests" count refreshed. `configvalues.kind` promoted
+to public so the section-shape checks share m18/m21's JSON-kind vocabulary
+(one home, no drift back to `type(...).__name__`).
+
+### 25.1 Verification
+
+`tests/test_reaudit_v029.py` (25 offline tests, zero hardware): D26 through
+load + CLI list/add + dry-run radar (exit 6, file byte-stable); D25 for every
+wrong JSON kind through load, the `get_idle_backlight_cfg`/
+`apply_idle_backlight`/`set_status_backlight` consumer seams (ConfigError,
+device never touched) and the full CLI `status idle` seam with mocked
+discovery+device (exit 6); absent/empty sections keep defaults (regression);
+shared-vocabulary lock (`configvalues.kind` used, no `type(` drift);
+anti-recurrence AST invariant — no None-comparison may ever return to
+`load_events_config` (the D26 pattern: null-as-absent), prose exempt;
+table-driven per-kind rejection for both sections; m22 dry-run probe
+passthrough incl. headless NOT FOUND + dry-run block intact for renderers.
+Suite: 469 → 494 tests, all green (5 numpy-optional skips);
+`scripts/lint.sh` GREEN. Live probes on real hardware through the shim:
+`events list --config` with `events: null` → 6 "got null"; `status idle
+--config` with `"backlight": "warm"` / `null` → 6 naming the section (was
+AttributeError exit 1); `--dry-run probe` → interface report exit 0; valid
+`events.example.json` list unchanged; version 0.29.0.
+
+Queued for v0.30.0: m23 (`idle_mode` config value unbounded — CLI bounds
+0..19 via `parse_mode`, hand-edited 255 wraps silently in `mode & 0xFF`),
+m24 (`events remove` id match case-sensitive vs title case-insensitive),
+m25 (`events add` re-add drops unknown hand-added entry fields), m26
+(negative `--dwell`/`--watch` accepted by `finite_float`).

@@ -254,7 +254,7 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | `3` | Device not found (is the keyboard connected via USB?) | `DeviceNotFoundError` |
 | `4` | Permission denied on the device node — install the udev rule from `udev/` (see Setup) | `PermissionDeniedError` |
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
-| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list / entry not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder (config value or `events add --note`), non-numeric idle-backlight field, non-boolean `idle_rainbow` such as the string `"false"` —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
+| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list, `null` included / entry not an object / `backlight` section not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder (config value or `events add --note`), non-numeric idle-backlight field, non-boolean `idle_rainbow` such as the string `"false"` —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
 | `8` | Input file not found (`upload <file>` / `--dry-run upload <file>` with a bad path, or `run <missing-command>`) — user error, retrying will not help | `FileMissingError` |
 | `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path / not writable (unwritable parent or target, unknown file extension), or `run <command>` is not executable | `InvalidFileError` |
@@ -265,18 +265,28 @@ All driver errors derive from `AK820Error` (`ak820/errors.py`), which carries th
 
 ## Architecture
 
-Since v0.9.0 the implementation lives in the `ak820/` package (every module < 300 lines); the top-level `ak820_ctrl.py` is a pure backward-compatibility re-export shim:
+Since v0.9.0 the implementation lives in the `ak820/` package (every module < 300 lines); the top-level `ak820_ctrl.py`, `milestone_radar.py`, and `widgets.py` are pure backward-compatibility re-export shims:
 
 | Module | Responsibility |
 |:---|:---|
 | `ak820/protocol.py` | Constants, Sonix packet framing, reply parsing (no I/O) |
-| `ak820/transport.py` | The only fd/IO module: `HidTransport` seam, hidraw discovery, `AK820ProDevice`, keypress wait |
-| `ak820/device.py` | fd-free device logic (`AK820Pro`, `stream_payload`) |
-| `ak820/screen.py` | RGB565 packer, image/GIF fitting, shared render constants + cached fonts |
+| `ak820/transport.py` | The only fd/IO module: `HidTransport` seam, `AK820ProDevice`, keypress wait |
+| `ak820/discovery.py` | sysfs scanning: which hidraw nodes belong to the keyboard (no fd/io) |
+| `ak820/device.py` | fd-free device logic (`AK820Pro`, `stream_payload`, bounded timeouts) |
+| `ak820/screen.py` | RGB565 packer (optional numpy fast path), image/GIF fitting, cached fonts |
 | `ak820/state.py` | Payload-hash dedup + pipe-clean flag driving the §3.5 alignment-skip (`AK820_STATE_PATH` override for tests) |
-| `ak820/actions.py` / `backlight.py` / `status.py` / `config.py` | Command layer (upload, radar, lighting, HUD/media config) |
-| `ak820/cli.py` | Argparse tree, `DEVICE_HANDLERS` dispatch table, exit-code `main()` |
 | `ak820/errors.py` | Error taxonomy + exit-code contract above |
+| `ak820/events.py` | Events-config domain: path resolution, date validation, shape checks, countdown rows (PIL-free) |
+| `ak820/configvalues.py` | Field-value coercion at the `load_events_config` choke point (m18/m21) |
+| `ak820/parser.py` | The argparse surface: what the CLI accepts, nothing else |
+| `ak820/cli.py` | Offline-first routing, `--dry-run`, discovery, exit-code `main()` |
+| `ak820/handlers.py` | Device-bound `(args, dev)` handlers + `DEVICE_HANDLERS` dispatch table |
+| `ak820/actions.py` | Upload pipeline: dedup, align-skip, retry policy, clock sync |
+| `ak820/backlight.py` / `status.py` / `presets.py` | Lighting: mode byte assembly, workflow status, showcase preset catalog (pure data) |
+| `ak820/config.py` | Device-free commands: `events` CRUD + `--save-preview` renders |
+| `ak820/renderers.py` | Per-command render helpers shared by live upload and `--dry-run` |
+| `ak820/cards.py` / `palette.py` | Radar hero/board/custom 128×128 renderers + urgency palette |
+| `ak820/hud.py` / `telemetry.py` | HUD + media card renderers + PIL-free sysfs/proc/MPRIS probes |
 
 For deep-dive reverse-engineering details, including:
 - Sonix `SN32F290` ARM Cortex-M0 MCU disassembly and memory maps
@@ -290,7 +300,7 @@ See [`FINDINGS.md`](FINDINGS.md).
 
 ## Testing
 
-The full suite (140+ tests) is device-free: a `FakeTransport` SN32F290 firmware simulator with injectable ACK drops exercises the upload protocol with no keyboard attached.
+The full suite (470+ tests) is device-free: a `FakeTransport` SN32F290 firmware simulator with injectable ACK drops exercises the upload protocol with no keyboard attached.
 
 ```bash
 python3 -m unittest discover -s tests -v
