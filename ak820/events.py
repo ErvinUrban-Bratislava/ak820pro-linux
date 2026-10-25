@@ -221,13 +221,18 @@ def compute_upcoming_events(cfg: dict, today: datetime.date | None = None) -> li
         years = next_date.year - orig_year
         category = ev.get("category", "milestone")
 
-        if category == "birthday":
+        # m29 (v0.33.0): the `else` branch below is the ONLY place a `note` is
+        # ever consulted — birthday/anniversary columns are fixed text, which is
+        # why `configvalues.validate_note_category` refuses to store a note for
+        # them at the CLI. Category names come from configvalues (one home with
+        # the parser's --category choices), so the two can never drift.
+        if category == configvalues.CATEGORY_BIRTHDAY:
             milestone_str = f"Turns {years}" if years > 0 else "Birthday"
             short_age = _ordinal(years) if years > 0 else "B-Day"
-        elif category == "anniversary":
+        elif category == configvalues.CATEGORY_ANNIVERSARY:
             milestone_str = f"{years} Years" if years > 0 else "Anniversary"
             short_age = f"{years} yrs" if years > 0 else "Anniv"
-        else:
+        else:  # milestone (and any unknown hand-edited category): note-driven
             note_tpl = ev.get("note", "")
             milestone_str = (
                 note_tpl.format(years=years) if "{years}" in note_tpl else (note_tpl or "Milestone")

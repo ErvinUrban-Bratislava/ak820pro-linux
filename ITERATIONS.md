@@ -36,6 +36,7 @@
 | `v0.30.0` | 2026-10-25 | Done | Carried §25 minors: m23 idle int bounds at the `configvalues` choke point (bounds in `protocol.py` feed loader AND parser choices — one home; `_IDLE_INT_FIELDS` derived from `_IDLE_INT_RANGES` so an unbounded idle int field is unrepresentable; out-of-range -> ConfigError 6 naming field + range) + m24 one case-insensitive id-or-title identity rule (`_same_event`) shared by add + remove + m25 re-add preserves unknown hand-added fields (`dict(prior)` rebuild, `--note` wins, m20 no-op extends) + m26 `non_negative_float` rejects negative `--seconds`/`--watch`/`--dwell` at parse time (usage 2) | `python3 -m unittest` 519/519 + `scripts/lint.sh` GREEN + live real-hardware exit-6/exit-2/CRUD probes |
 | `v0.31.0` | 2026-10-25 | Done | m27 closed — blank `--short`/`--title`/remove-target rejected at the CLI: new public `configvalues.validate_nonblank` (ConfigError 6, D4 precedent) is the single home of the non-blank rule shared by `events add` flags and the `events remove` target; returns the stripped text so padded values store the canonical id/label (`" DAUGHTER "` -> `daughter`/`DAUGHTER`, never `-daughter-`) and remove stays symmetric (m24's class); DECIDED: `--title` gets the same guard, loader stays permissive for hand-edited data (trust boundary test-locked); `_same_event` empty-needle semantics table-locked; README exit-6 row synced | `python3 -m unittest` 539/539 + `scripts/lint.sh` GREEN + live shim probes (repro forms -> 6, padded round-trip canonical) |
 | `v0.32.0` | 2026-10-25 | Done | m28 closed — whitespace-only `--note` no longer stored verbatim (it rendered an EMPTY milestone column: `note_tpl or "Milestone"` is truthy for spaces): CLI rejects blank `--note` through the existing `validate_nonblank` (one rule, four entry points — `--short " "` and `--note " "` now fail identically), DECIDED against "treat as absent" because it guesses at intent and still cannot clear a note; `validate_note` now returns the stripped text and the coercion persists it, so hand-edited `"note": "   "` normalizes at the choke point to the documented `""` fallback; trust boundary revisited and KEPT CLI-only with the decisive reason recorded (`"note": ""` is a legal working spelling — load-time rejection bricks whole configs), identity fields deliberately not stripped at load; asymmetry test-locked as a table | `python3 -m unittest` 567/567 + `scripts/lint.sh` GREEN + live **real-hardware** probes (repro -> 6, padded stored `{years} yrs`, hand-edited blank -> `Milestone`, `status idle --config` -> 0) |
+| `v0.33.0` | 2026-10-25 | Done | m29 closed — `--note` no longer accepted for categories that never render it (live-proven: `--category birthday --note "ignored {years}"` exited 0, stored, rendered `Turns 37`): new `configvalues.validate_note_category` rejects the inert pair as ConfigError 6 naming flag + category + both fixes, and it validates the **RESULTING entry** so the mirror path is covered too — a re-add with no `--note` at all preserved a note the new category could never show (m25's prior-copy). DECIDED reject over warn/document (a flag that does nothing is the m18 class; a warning is half-silent); `--clear-note` chosen over a `--note -` sentinel and removes the key (absent, not `""`), `--note`+`--clear-note` -> 6 checked before the blank rule; loader stays permissive (CLI 6 / loader 0 table-locked per category); anti-recurrence: category vocabulary now has ONE home feeding parser choices AND the renderer, inert set derived from it (m23's pattern), literals banned by source invariant | `python3 -m unittest` 602/602 + `scripts/lint.sh` GREEN + live **real-hardware** probes (repro -> 6, `--clear-note` -> key gone + `Milestone`, repeat clear mtime-stable, contradiction -> 6) |
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
 
 ---
@@ -568,7 +569,7 @@
     "already up to date", `status idle --config` -> 0 with idle coercion intact,
     version 0.32.0). Found while probing: m29 queued below.
 
-- [ ] **`v0.33.0`** — m29 (found during the v0.32.0 probes): `--note` is
+- [x] **`v0.33.0`** — m29 (found during the v0.32.0 probes): `--note` is
     silently inert for `--category birthday|anniversary` — live-proven:
     `events add --category birthday --note "ignored {years}"` exited 0, stored
     `note: 'ignored {years}'`, and `events list` rendered `Turns 1` (the note
@@ -582,4 +583,59 @@
     preserves it, blank is now rejected), so JSON hand-editing is the only way —
     decide `--clear-note` vs `--note -` sentinel and keep the non-blank rule
     intact.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - Closed in v0.33.0: DECIDED **reject at the CLI** (`configvalues.validate_note_category`,
+    ConfigError 6) over warn-or-document — a flag that does nothing is the class
+    this project has closed since m18, a stderr warning is half-silent and
+    invisible to scripts, and help text alone leaves the trap armed; the message
+    names the flag, the category and both fixes. The check runs against the
+    **RESULTING entry** (after the m25 prior-copy merge and the `--clear-note`
+    pop), which also catches the mirror path the flag alone would miss:
+    `events add --category birthday` with no `--note` at all preserved a note the
+    new category never renders. Consequence accepted + test-locked: an identical
+    re-add of a hand-edited birthday+note entry is rejected too (m20's no-op sits
+    after the rule) — the CLI never affirms what it refuses to create.
+    `--clear-note` chosen over a `--note -` sentinel (a sentinel collides with
+    real note text and argparse treats leading dashes as options); the key goes
+    ABSENT not `""`, and `--note` + `--clear-note` → exit 6 checked BEFORE the
+    blank rule so the contradiction is what gets named. Loader stays permissive
+    (m27/m28 boundary, table-locked CLI 6 / loader 0 per category).
+    Anti-recurrence: the category vocabulary now has ONE home
+    (`configvalues.CATEGORY_*` / `EVENT_CATEGORIES` feeding parser choices AND the
+    renderer, `NOTE_INERT_CATEGORIES` derived) — m23's pattern, so a new category
+    cannot escape the note rule; source invariants forbid category literals in
+    `parser.py`/`events.py` and lock the resulting-entry ordering. README exit-6
+    row + events section + Testing count synced, REVIEW.md §29;
+    `tests/test_minors_v033.py` (35 offline tests, zero hardware: repro argv -> 6
+    with bytes+mtime stable, message names flag/category/both fixes, inertness
+    comes from the category not `{years}`, preserved-note path + escape hatch +
+    legal birthday->milestone revival, `--clear-note` key-absent/fallback/no-op
+    mtime/fresh-entry/extras-preserved/contradiction ordering, 3x3 render table
+    compared against each row's own `years`, trust-boundary table per category,
+    8-case unit table, one-home + parser-surface locks); suite 567 -> 602 +
+    `scripts/lint.sh` GREEN + live **real-hardware** probes (repro -> 6 where an
+    exit-0 inert store was, `--clear-note` removed the key and listed
+    `Milestone`, repeat clear -> "already up to date" mtime-stable, contradiction
+    -> 6, milestone note round-trip intact, version 0.33.0). Found while probing:
+    m30 queued below.
+
+- [ ] **`v0.34.0`** — m30 (found during the v0.33.0 probes): unbounded dynamic
+    text on the 128x128 board card. Nothing bounds a `note`'s length
+    (`validate_nonblank` checks non-blank, `validate_note` only the `{years}`
+    placeholder), and `cards.render_board_card` draws each row's
+    `f"{date_label} • {milestone_str}"` line at a **fixed** font size 9 with no
+    width fitting — live-measured: a 66-char note produced **288 px** of text
+    drawn from x=11 into a 128 px screen, clipped mid-word and silent, while
+    every other dynamic string on that card (row name, hero sub, hero big) goes
+    through `_fit_text_font`. `--short` is likewise unbounded (20 chars accepted
+    today; its help says "max ~10 chars"). Decide: (a) fit the board meta line
+    like the name line and ellipsize once `_fit_text_font` hits its min size so
+    overflow is at least legible-and-marked rather than silently amputated,
+    (b) bound `--note`/`--short` lengths at the CLI (ConfigError 6 naming the
+    limit, the m23/m27 one-home pattern) or (c) both — and record why the hero
+    card (which DOES fit) needs no bound. Lock the render table: note lengths
+    short/edge/overflowing x hero/board, asserting every drawn string's bbox
+    stays inside the row box (no test may depend on today's date). While there,
+    check `render_custom_card`'s `--value`/`--sub`/`--footer` for the same
+    unbounded-draw class and record findings either way.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

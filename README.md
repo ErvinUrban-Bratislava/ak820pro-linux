@@ -138,6 +138,10 @@ ak820 events list --config ./my-events.json
 ak820 events add --title "Daughter's Birthday" --short "DAUGHTER" --date "2025-11-06" --category birthday
 ak820 events add --title "Ship V2" --short "SHIPV2" --date "2026-12-01" --note "Shipped {years} yrs after V1"
 # Re-adding without --note keeps an existing entry's note; identical re-adds skip the write
+# --note is a milestone-entry field: birthdays and anniversaries show fixed text
+# ("Turns 37" / "7 Years"), so pairing it with those categories exits 6 instead of
+# storing a note that could never render. --clear-note removes a stored note:
+ak820 events add --title "Ship V2" --short "SHIPV2" --date "2026-12-01" --clear-note
 
 # Push 2-slide alternating radar (Hero Countdown + 3-Row Family Board)
 ak820 radar --view cycle --sync-clock
@@ -254,7 +258,7 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | `3` | Device not found (is the keyboard connected via USB?) | `DeviceNotFoundError` |
 | `4` | Permission denied on the device node — install the udev rule from `udev/` (see Setup) | `PermissionDeniedError` |
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
-| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list, `null` included / entry not an object / `backlight` section not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder (config value or `events add --note`), non-numeric idle-backlight field, non-boolean `idle_rainbow` such as the string `"false"`, out-of-range idle-backlight field (`idle_mode` outside 0..19, `idle_brightness`/`idle_speed` outside 0..5, `idle_direction` outside 0..3), blank `events add --short`/`--title`/`--note` or `events remove` target (empty or whitespace-only) —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
+| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list, `null` included / entry not an object / `backlight` section not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder (config value or `events add --note`), non-numeric idle-backlight field, non-boolean `idle_rainbow` such as the string `"false"`, out-of-range idle-backlight field (`idle_mode` outside 0..19, `idle_brightness`/`idle_speed` outside 0..5, `idle_direction` outside 0..3), blank `events add --short`/`--title`/`--note` or `events remove` target (empty or whitespace-only), `events add --note` (or a note a re-add preserves) for `--category birthday`/`anniversary`, which never render a note — use `--clear-note` or `--category milestone` —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
 | `8` | Input file not found (`upload <file>` / `--dry-run upload <file>` with a bad path, or `run <missing-command>`) — user error, retrying will not help | `FileMissingError` |
 | `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path / not writable (unwritable parent or target, unknown file extension), or `run <command>` is not executable | `InvalidFileError` |
@@ -300,7 +304,7 @@ See [`FINDINGS.md`](FINDINGS.md).
 
 ## Testing
 
-The full suite (565+ tests) is device-free: a `FakeTransport` SN32F290 firmware simulator with injectable ACK drops exercises the upload protocol with no keyboard attached.
+The full suite (600+ tests) is device-free: a `FakeTransport` SN32F290 firmware simulator with injectable ACK drops exercises the upload protocol with no keyboard attached.
 
 ```bash
 python3 -m unittest discover -s tests -v

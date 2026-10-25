@@ -79,6 +79,16 @@ def cmd_events(args):
         short = configvalues.validate_nonblank(args.short, f"--short {args.short!r}")
         title = configvalues.validate_nonblank(args.title, f"--title {args.title!r}")
         note = getattr(args, "note", None)
+        # m29 (v0.33.0): --clear-note is the only way to REMOVE a stored note —
+        # omitting --note preserves it (v0.27.0) and blank is rejected (m28), so
+        # JSON hand-editing was the only exit. Combining the two contradicts
+        # itself; like every other note rule that is a fix-your-input error (6).
+        clear_note = getattr(args, "clear_note", False)
+        if clear_note and note is not None:
+            raise ConfigError(
+                "--note and --clear-note contradict each other: give a note "
+                "template or clear the stored one, not both."
+            )
         if note is not None:
             # m28 (v0.32.0): a whitespace-only --note was stored verbatim and
             # rendered an empty MILESTONE column (live-proven: `'   '` persisted,
@@ -108,8 +118,22 @@ def cmd_events(args):
                 "category": args.category,
             }
         )
-        if note is not None:
+        if clear_note:
+            # m29 (v0.33.0): the key goes ABSENT, not "" — absence is what "no
+            # note" means here (the documented fallback renders "Milestone"
+            # either way) and a later plain re-add cannot resurrect it.
+            entry.pop("note", None)
+        elif note is not None:
             entry["note"] = note
+        # m29 (v0.33.0): a note is consulted ONLY for milestone entries, so an
+        # inert one is rejected against the RESULTING entry — that covers both an
+        # explicit --note on a birthday AND the note the m25 prior-copy preserves
+        # when --category switches a noted milestone over to a birthday.
+        configvalues.validate_note_category(
+            args.category,
+            entry.get("note"),
+            f"--note {note!r}" if note is not None else "the stored note",
+        )
         kept = [e for e in old_events if not _same_event(e, ev_id, title)]
         kept.append(entry)
         target_path = cfg_path or events.get_default_events_path()

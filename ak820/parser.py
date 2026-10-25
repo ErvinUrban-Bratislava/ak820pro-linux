@@ -13,6 +13,7 @@ Invariant: `cli.build_parser is parser.build_parser` (re-export, not a copy)
 import argparse
 import math
 
+from .configvalues import CATEGORY_MILESTONE, EVENT_CATEGORIES
 from .protocol import MAX_BRIGHTNESS, MAX_DIRECTION, MAX_LIGHT_MODE, MAX_SPEED
 
 
@@ -178,18 +179,18 @@ def build_parser():
         help="Short label for 128x128 screen (max ~10 chars, non-empty, e.g. DAUGHTER)",
     )
     ev_a.add_argument("--date", required=True, help="Date in YYYY-MM-DD or MM-DD format")
-    ev_a.add_argument(
-        "--category", choices=["birthday", "anniversary", "milestone"], default="milestone"
-    )
+    # m29 (v0.33.0): choices come from configvalues.EVENT_CATEGORIES (m23's one-home pattern).
+    ev_a.add_argument("--category", choices=list(EVENT_CATEGORIES), default=CATEGORY_MILESTONE)
     # v0.27.0: `note` was the one event field that required hand-editing JSON.
     # Validated by the same {years}-only rule as the config loader (configvalues).
     ev_a.add_argument(
         "--note",
         default=None,
-        help="Note template, non-empty (e.g. 'Shipped {years} yrs after V1'); only "
+        help="Note template, non-empty, milestone entries only (m29); only "
         "{years} may be interpolated. Omit to keep an existing entry's note when "
-        "re-adding.",
+        "re-adding; use --clear-note to remove one.",
     )
+    ev_a.add_argument("--clear-note", action="store_true", help="Drop a stored note")
     ev_r = ev.add_parser("remove", help="Remove a milestone by id or title")
     ev_r.add_argument("target", help="Event id or title to remove")
     ev_r.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)

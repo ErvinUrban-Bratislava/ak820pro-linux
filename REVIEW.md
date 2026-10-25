@@ -1905,3 +1905,93 @@ Found while probing: `--note` is silently inert for
 {years}"` stored the note and rendered `Turns 1` (the note is only consulted
 for milestones) -> queued for v0.33.0 as m29, together with the related gap
 that no CLI path clears an existing note.
+
+---
+
+## 29. m29 — `--note` Accepted for Categories That Never Render It (v0.33.0, 2026-10-25)
+
+**Live repro (before the fix).** `events add --category birthday --note
+"ignored {years}"` exited **0**, stored `"note": "ignored {years}"`, and
+`events list` rendered `Turns 37`; `--category anniversary --note "note says
+{years}"` stored and rendered `7 Years`. `compute_upcoming_events` consults
+`note` in the milestone branch **only** — birthday/anniversary columns are
+fixed text — so the flag was accepted, persisted, and never rendered. The
+companion gap m28 had left open: omitting `--note` preserves the stored note
+(v0.27.0) and blank is rejected (m28), so **no CLI path could remove a note**;
+JSON hand-editing was the only exit.
+
+**The mirror path is the same defect.** Because a re-add rebuilds from
+`dict(prior)` (m25), `events add --category birthday` with **no `--note` at
+all** silently preserved a note that the new category never renders — inert
+data entering the config through a door nobody walked through. A rule that
+only inspected the flag would have missed it.
+
+**DECIDED — reject at the CLI (`configvalues.validate_note_category`, ConfigError
+6), not warn, not document-only.** A flag that does nothing is the defect class
+this project has closed since m18: never guess, never silently accept. A stderr
+warning is half-silent and invisible to scripts; help text alone leaves the
+trap armed. Rejecting names the mistake at the moment it is made and offers
+both exits (`--clear-note`, or `--category milestone`). The check runs against
+the **RESULTING entry** — after the prior-copy merge and the `--clear-note`
+pop — so both paths are covered by one call. Consequence, accepted and
+test-locked: an *identical* re-add of a hand-edited birthday+note entry is
+rejected too (the m20 no-op sits after the rule); the CLI never affirms data it
+would refuse to create.
+
+**DECIDED — `--clear-note` flag, not a `--note -` sentinel.** A sentinel
+collides with legitimate note text (`-` is a valid note) and argparse treats
+leading dashes as options; an explicit flag is self-documenting and greppable.
+The key goes **absent**, not `""` — absence is what "no note" means here (the
+documented fallback renders `Milestone` either way) and a later plain re-add
+cannot resurrect it. `--note` + `--clear-note` contradict each other → exit 6,
+checked **before** the blank rule so `--note "" --clear-note` is told the real
+problem (the contradiction), not m28's message.
+
+**Trust boundary unchanged (m27/m28).** The loader stays permissive: a
+hand-edited birthday+note config still loads and renders `Turns N`. Rejecting
+data the user already wrote would brick whole configs — the CLI can no longer
+*create* such a pair. The asymmetry is locked as a table (CLI 6 / loader 0).
+
+**Anti-recurrence — the category vocabulary now has ONE home.** `birthday`,
+`anniversary` and `milestone` were spelled in three modules (parser choices,
+renderer branches, and implicitly the note rule). They are now
+`configvalues.CATEGORY_*` / `EVENT_CATEGORIES`, feeding `parser.py`'s
+`--category` choices **and** `events.py`'s renderer, with
+`NOTE_INERT_CATEGORIES` derived from them — so a category added to the CLI
+cannot escape the note rule (the m23 bounds pattern: one home, no drift).
+Source invariants forbid category string literals in `parser.py`/`events.py`
+and lock the ordering of the resulting-entry check in `config.py`.
+
+### 29.1 Verification
+
+`tests/test_minors_v033.py` (35 offline tests, zero hardware): the exact live
+repro argv now exits 6 with config bytes + mtime stable and no traceback; the
+message names `--note`, the category, and both fixes; a placeholder-free note
+is equally inert (the category, not `{years}`, is the cause); milestone /
+birthday / anniversary adds without a note are unaffected. Preserved-note path:
+switch-to-birthday with a stored note → 6 untouched, `--clear-note` is the
+escape hatch, birthday→milestone legally revives a note, identical re-add of a
+hand-edited inert entry is rejected. `--clear-note`: key absent (not `""`),
+renders the `Milestone` fallback, no-op with stable mtime when there is no
+note, no key on a fresh entry, contradiction → 6 untouched, contradiction
+precedes the blank rule, m25 extras survive a clear. Render semantics locked as
+a table (3 categories × note present/absent/empty, compared against the row's
+own `years`, plus the unknown-category note branch) with the CLI-6/loader-0
+boundary per category. `validate_note_category` unit table (8 cases).
+Anti-recurrence: vocabulary derivation, no category literals in `parser.py`
+(including `default=CATEGORY_MILESTONE`) or `events.py`, resulting-entry
+ordering invariant, parser surface (`--clear-note` dest/default, `--note` help
+documents milestone-only + `--clear-note`).
+Suite: 567 -> 602 tests, all green (5 numpy-optional skips); `scripts/lint.sh`
+GREEN (ruff check + format + mypy). Live probes on **real hardware**: repro
+argv → 6 friendly where an exit-0 inert store was, `--clear-note` removed the
+key and listed `Milestone`, repeat `--clear-note` → "already up to date" with
+mtime stable, contradiction → 6, milestone note round-trip intact, version
+0.33.0.
+
+Found while probing: the board card draws its `date • milestone_str` line at a
+**fixed** font size with no width fitting — a long `note` (nothing bounds its
+length) measured **288 px** drawn from x=11 into a 128 px screen, clipped
+mid-word and silent, while every other dynamic string on that card goes through
+`_fit_text_font`; `--short` is likewise unbounded (20 chars accepted, help says
+"max ~10") -> queued for v0.34.0 as m30.

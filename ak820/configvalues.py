@@ -35,6 +35,16 @@ Contract (mirrors D22's taxonomy at the same single choke point):
   decision — the CLI can never CREATE a blank-field entry, and rejecting data
   the user already wrote would turn every command into exit 6 (see
   `validate_nonblank`'s trust-boundary note and REVIEW.md §28).
+* A `note` is rendered for `milestone` entries ONLY (m29, v0.33.0):
+  `compute_upcoming_events` never consults it for `birthday`/`anniversary`, so
+  `--category birthday --note …` stored a note that could never appear on
+  screen. `validate_note_category` rejects that combination at the CLI
+  (ConfigError 6) against the RESULTING entry, and `--clear-note` closes the
+  gap m28 left open (no CLI path removed a stored note). The category
+  vocabulary has ONE home here — `EVENT_CATEGORIES` feeds `parser.py`'s
+  `--category` choices and `events.py`'s renderer, `NOTE_INERT_CATEGORIES`
+  names the categories that never consult a note — so a new category cannot be
+  added to the CLI without this rule accounting for it (the m23 bounds pattern).
 
 `load_events_config` is the only caller of the coercion above; consumers that
 inject hand-built dicts directly (unit-test seams) bypass this and keep their
@@ -68,6 +78,19 @@ _IDLE_INT_FIELDS = tuple(_IDLE_INT_RANGES)
 _IDLE_BOOL_FIELDS = ("idle_rainbow",)
 _TRUE_TEXTS = ("true", "1")
 _FALSE_TEXTS = ("false", "0")
+
+# m29 (v0.33.0): the event-category vocabulary has ONE home. `parser.py` builds
+# its `--category` choices from `EVENT_CATEGORIES` and `events.py` renders from
+# the same names, so a category can never be added to the CLI without the note
+# rule below accounting for it (the m23 bounds pattern: one home, no drift).
+CATEGORY_BIRTHDAY = "birthday"
+CATEGORY_ANNIVERSARY = "anniversary"
+CATEGORY_MILESTONE = "milestone"
+EVENT_CATEGORIES = (CATEGORY_BIRTHDAY, CATEGORY_ANNIVERSARY, CATEGORY_MILESTONE)
+# Categories whose MILESTONE column is FIXED text ("Turns N" / "N Years"): the
+# note is never consulted for them, so a stored note is accepted-but-inert —
+# exactly the silent no-op m29 refuses to persist.
+NOTE_INERT_CATEGORIES = (CATEGORY_BIRTHDAY, CATEGORY_ANNIVERSARY)
 
 
 def kind(value: object) -> str:
@@ -197,6 +220,37 @@ def validate_nonblank(value: str, where: str) -> str:
     if not stripped:
         raise ConfigError(f"{where} must not be empty or whitespace-only.")
     return stripped
+
+
+def validate_note_category(category: str, note: str | None, origin: str) -> None:
+    """Reject a note its category can never render (m29, v0.33.0). ConfigError 6.
+
+    `compute_upcoming_events` consults `note` in the milestone branch ONLY —
+    for `birthday`/`anniversary` the MILESTONE column is fixed text, so
+    `events add --category birthday --note "ignored {years}"` exited 0, stored
+    the note, and listed `Turns 1` (live-proven in the v0.32.0 probes). A flag
+    that is accepted, persisted and never rendered is a silent no-op; naming it
+    at the entry point is the stance every m18/m21/m23/m26/m27/m28 fix takes.
+
+    `origin` says where the note came from, because two paths reach the same
+    inert state: an explicit `--note` on a birthday, and a note the m25
+    prior-copy PRESERVES when `--category` switches a noted milestone to a
+    birthday. The caller therefore validates the RESULTING entry, not just the
+    flag, so neither path can slip a note the screen will never show.
+
+    Trust boundary unchanged (m27/m28): the loader stays permissive — a
+    hand-edited birthday+note config still loads and renders `Turns N`, since
+    rejecting data the user already wrote would brick whole configs. The
+    creation path is where the rule lives; `--clear-note` is the escape hatch
+    the error message offers for a preserved note.
+    """
+    if note and category in NOTE_INERT_CATEGORIES:
+        raise ConfigError(
+            f"{origin} is never rendered for --category {category}: birthdays and "
+            f"anniversaries show fixed text in the MILESTONE column. Omit --note "
+            f"(or pass --clear-note to drop a stored note), or use "
+            f"--category {CATEGORY_MILESTONE}."
+        )
 
 
 def coerce_config_values(cfg: dict, path: str) -> dict:
