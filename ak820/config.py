@@ -77,6 +77,9 @@ def cmd_events(args):
         # the stripped text, so the canonical id/label normalization is
         # single-home and callers cannot forget to strip.
         short = configvalues.validate_nonblank(args.short, f"--short {args.short!r}")
+        # m31b (v0.36.0): every screen field renders on ONE line, so a break
+        # is refused at the creation path (the renderer can only flatten it).
+        short = configvalues.validate_single_line(short, f"--short {short!r}")
         # m30 (v0.34.0): the stripped label is then length-bounded against
         # MAX_SHORT_LEN (ConfigError 6) — `--short`'s help promised "max ~10
         # chars" while 20 chars were accepted, and a long label shrinks to
@@ -86,6 +89,9 @@ def cmd_events(args):
             short, f"--short {short!r}", configvalues.MAX_SHORT_LEN
         )
         title = configvalues.validate_nonblank(args.title, f"--title {args.title!r}")
+        # m31b: the full title feeds the `events list` table and the id/title
+        # identity rule — both single-line surfaces (one rule, one vocabulary).
+        title = configvalues.validate_single_line(title, f"--title {title!r}")
         note = getattr(args, "note", None)
         # m29 (v0.33.0): --clear-note is the only way to REMOVE a stored note —
         # omitting --note preserves it (v0.27.0) and blank is rejected (m28), so
@@ -107,6 +113,11 @@ def cmd_events(args):
             # {years}-only rule (v0.27.0, never a render KeyError) and returns
             # the stripped text, so incidental padding never reaches the config.
             note = configvalues.validate_nonblank(note, f"--note {note!r}")
+            # m31b (v0.36.0): the milestone column is one line on hero and
+            # board alike — a break is named here, not flattened in silence.
+            # Checked before the template rule: an unrenderable shape is the
+            # more fundamental problem than its placeholder content.
+            note = configvalues.validate_single_line(note, f"--note {note!r}")
             note = configvalues.validate_note(note, f"--note {note!r}")
         ev_id = short.lower().replace(" ", "-")
         old_events = cfg.get("events", [])

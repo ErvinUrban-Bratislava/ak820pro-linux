@@ -39,6 +39,7 @@
 | `v0.33.0` | 2026-10-25 | Done | m29 closed — `--note` no longer accepted for categories that never render it (live-proven: `--category birthday --note "ignored {years}"` exited 0, stored, rendered `Turns 37`): new `configvalues.validate_note_category` rejects the inert pair as ConfigError 6 naming flag + category + both fixes, and it validates the **RESULTING entry** so the mirror path is covered too — a re-add with no `--note` at all preserved a note the new category could never show (m25's prior-copy). DECIDED reject over warn/document (a flag that does nothing is the m18 class; a warning is half-silent); `--clear-note` chosen over a `--note -` sentinel and removes the key (absent, not `""`), `--note`+`--clear-note` -> 6 checked before the blank rule; loader stays permissive (CLI 6 / loader 0 table-locked per category); anti-recurrence: category vocabulary now has ONE home feeding parser choices AND the renderer, inert set derived from it (m23's pattern), literals banned by source invariant | `python3 -m unittest` 602/602 + `scripts/lint.sh` GREEN + live **real-hardware** probes (repro -> 6, `--clear-note` -> key gone + `Milestone`, repeat clear mtime-stable, contradiction -> 6) |
 | `v0.34.0` | 2026-10-25 | Done | m30 closed: unbounded dynamic text bounded on 128x128 screen via `fit_text` (shrink font then ellipsize), font fallbacks for DejaVu/Liberation, dynamic test fixture budget, CI font parity | `python3 -m unittest` 642/642 + `scripts/lint.sh` GREEN + remote CI GREEN (#40193038662) |
 | `v0.35.0` | 2026-10-25 | Done | m31 closed (self-healing trigger: 19 gate failures "value escaped above the panel") — the m30 containment rule was width-only: `fit_text` measured width but never line count, so a `\n` split a fitted line and a **centred** box (custom-card `--value`) drew its first line ten px above the panel (7-line value → y=15 vs panel y=25), top-anchored boxes spilled below their border, silent exit 0. Fixed at the single home of containment: new `screen.flatten_lines` collapses every `str.splitlines()` boundary to a space, called by both `fit_text` and `ellipsize`, so every caller inherits vertical containment; newline-free text returned byte-identical (parity-locked), CLI unchanged (loader stays permissive, m27/m28/m29 boundary), source invariants forbid re-implementation, §10 budget regression-guarded | `python3 -m unittest` 658/658 + `scripts/lint.sh` GREEN (ruff+mypy) + live pixel-containment render probes |
+| `v0.36.0` | 2026-10-25 | Done | m31b closed — the m30/m31 containment rule reached `hud.py`: media title/artist/album char-count caps (the exact proxy m30 rejected; 16-char title = 182 px amputated mid-glyph, single long word dropped line 1) replaced by `screen.fit_text` + a measured greedy wrap that marks its tail instead of dropping it; HUD `hostname` fitted to the clock's measured start x and `uptime` to its card border (live: painted to x=123 past the border at 121); every budget derived from the actual neighbouring element. New `configvalues.validate_single_line` (ConfigError 6) rejects line breaks in `events add --short/--title/--note` and `card --title/--value/--sub/--footer` at the ONE seam live and `--dry-run` share — the creation path refuses what the renderer can only flatten; loader stays permissive (CLI 6 / loader 0 table), CLI regex locked equal to `screen._LINE_BREAK_RE` (PIL-free twin), AST lock forbids any unfitted dynamic draw in hud | `python3 -m unittest` 693/693 + `scripts/lint.sh` GREEN + live real-hardware probes (break forms -> 6 zero-USB, valid -> 0, hand-edited `\n` still loads, renders measured contained) |
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
 
 ---
@@ -644,4 +645,66 @@
 
 - [x] **`v0.35.0`** — m31 (self-healing trigger fired: 19 gate failures "value escaped above the panel"): the m30 containment rule was **width-only** — `fit_text` measured width across the whole string but never asked how many lines it draws. PIL breaks a line on `\n`, so a centred box (the custom card's `--value`) centred on the TOTAL height and drew its first line ten px ABOVE the panel top (live-measured: a 7-line value hit y=15 vs panel y=25), while top-anchored boxes (board meta, hero subtitle) spilled below their own border — silent, exit 0, the m30 class one axis deeper. DECIDED: fix at the single home of containment, not per-caller — new `screen.flatten_lines` collapses every `str.splitlines()` line-break boundary to a space and is called by BOTH `fit_text` and `ellipsize`, so every caller inherits vertical containment exactly as it already inherits horizontal; newline-free text is returned byte-for-byte identical (parity test against a no-flatten reference), so no prior render moves. CLI deliberately NOT changed (a newline is unrenderable-on-one-line, not inert; loader stays permissive per the m27/m28/m29 trust boundary — hand-edited JSON with `\n` must still render, just contained). Anti-recurrence: source invariants lock that `flatten_lines` lives only in `screen` and `cards.py` never re-implements newline handling; the §10 <300-line budget is regression-guarded (screen.py 294). | `python3 -m unittest` 658/658 + `scripts/lint.sh` GREEN (ruff+mypy) + live render probes (custom value/board meta/hero subtitle newline containment measured pixel-by-pixel, byte-identical newline-free parity)
 
-- [ ] **`v0.36.0`** — m31b (found during the v0.35.0 audit): the m30/m31 containment rule still never reached `hud.py`. `render_media_card` bounds title/artist/album by **character count** (`title[:16]`, `artist[:20]`, `album[:22]`) — the exact proxy m30 rejected — so 16 wide glyphs at size 12 measure ~144 px into a ~120 px box (live-measured overflow past x=127), and the two-line wrap loop silently DROPS the first line for a single long word (no word boundary → everything lands on line 2). `render_hud_card` draws `hostname` and `uptime` unbounded (a 1000+-day uptime crosses the right-card border at x=121). Route every dynamic string in both renderers through `screen.fit_text` (measured-pixel, single-line via `flatten_lines`), rewrite the media wrap to a measured greedy wrap that never drops content and ellipsizes the tail, and derive each budget from the actual neighbouring element (clock start, card border). Add a CLI-side single-line guard (`validate_single_line`, ConfigError 6) for `--note`/`--value`/`--sub`/`--footer`/`--short`/`--title` so the creation path rejects what the renderer can only degrade — loader stays permissive (CLI 6 / loader 0 table). Verify with pixel-containment tests across hud/media + the existing byte-identical modularity lock.
+- [x] **`v0.36.0`** — m31b (found during the v0.35.0 audit): the m30/m31 containment rule still never reached `hud.py`. `render_media_card` bounds title/artist/album by **character count** (`title[:16]`, `artist[:20]`, `album[:22]`) — the exact proxy m30 rejected — so 16 wide glyphs at size 12 measure ~144 px into a ~120 px box (live-measured overflow past x=127), and the two-line wrap loop silently DROPS the first line for a single long word (no word boundary → everything lands on line 2). `render_hud_card` draws `hostname` and `uptime` unbounded (a 1000+-day uptime crosses the right-card border at x=121). Route every dynamic string in both renderers through `screen.fit_text` (measured-pixel, single-line via `flatten_lines`), rewrite the media wrap to a measured greedy wrap that never drops content and ellipsizes the tail, and derive each budget from the actual neighbouring element (clock start, card border). Add a CLI-side single-line guard (`validate_single_line`, ConfigError 6) for `--note`/`--value`/`--sub`/`--footer`/`--short`/`--title` so the creation path rejects what the renderer can only degrade — loader stays permissive (CLI 6 / loader 0 table). Verify with pixel-containment tests across hud/media + the existing byte-identical modularity lock.
+  - CLOSED (v0.36.0): all four m31b repros live-proven against the real renderers
+    BEFORE fixing (16-char title painted white to x=126 with 182 px amputated
+    mid-glyph; single long word left line 1 EMPTY; "12345d 23h" painted amber to
+    x=123 across the uptime card's border at x=121; 40-char hostname painted cyan
+    to x=125 under the clock starting at x=98). Renderer: every dynamic TEXT
+    string in `hud.py` now goes through `screen.fit_text` with each budget derived
+    from the measured neighbour — hostname from the clock's start x
+    (`clock_x - 4 - HUD_HOST_GAP`), uptime from the card border (`HUD_UPTIME_W =
+    121-71 = 50`), media strings from the outer border (`MEDIA_TEXT_W = 127-8 =
+    119`); numeric telemetry strings (clock/CPU/RAM/temp) stay the documented
+    bounded-by-construction exemption, the same class cards.py locks for the days
+    pill. The media wrap is a measured greedy wrap (`_wrap_media_title`): a single
+    over-long word gets its own ellipsized line (never an empty line 1), a tail
+    that fits on neither line is marked not amputated, and every line is
+    pixel-measured ≤ budget. CLI: `configvalues.validate_single_line` (ConfigError
+    6) guards `events add --short/--title/--note` (after strip, before the
+    length/template rules) and `card --title/--value/--sub/--footer` at
+    `renderers.render_card` — the ONE seam live upload and `--dry-run` share, so
+    both fail identically (D12 precedent). The CLI's line-break pattern is a
+    deliberate PIL-free twin of `screen._LINE_BREAK_RE` (configvalues must never
+    import PIL — events add stays PIL-free); the two definitions are locked equal
+    by an equivalence table, one rule two homes test-enforced. Loader stays
+    permissive (CLI 6 / loader 0 asymmetry table-locked per field; a note a
+    re-add PRESERVES from hand-edited JSON is not re-judged — the rule guards
+    what the CLI creates). Anti-recurrence: an AST invariant locks every dynamic
+    `draw.text` in both hud renderers as fitted/wrapped/exempt, char-count caps
+    (`[:16]`/`[:20]`/`[:22]`) are banned by source lock, hud may import
+    `flatten_lines` but may never define its own newline regex.
+  - Verify `python3 -m unittest` 693/693 (35 new offline tests incl. byte-identical
+    parity of both renderers against verbatim legacy copies for every string that
+    fitted both the old caps AND the measured box) + `scripts/lint.sh` GREEN
+    (ruff+mypy) + live real-hardware probes (`--dry-run card --value $'27\nDAYS'`
+    -> 6 naming flag+fix with zero USB, events `--note`/`--title` break forms -> 6
+    with config bytes stable, valid forms -> 0, hand-edited `\n` note still loads
+    and lists, hud/media `--save-preview` renders measured contained — uptime text
+    ends x=101, media title text x=123, both inside their borders; version 0.36.0).
+    Found while probing: m32 queued below.
+
+- [ ] **`v0.37.0`** — m32 (found during the v0.36.0 probes): the media card's
+    header tags render TOFU on the production font. `render_media_card` draws
+    `"▶ PLAYING"` / `"⏸ PAUSED"` / `"♫ MEDIA"` with `FONT_BOLD_PATHS`, but a
+    `.notdef`-mask comparison (measured live in v0.36.0): LiberationSans-Bold —
+    the FIRST catalog entry, installed on the production machine and in CI —
+    renders `▶` and `⏸` as identical-to-PUA tofu boxes (the header reads
+    "□ PLAYING" on real hardware, silent, exit 0), NotoSans-Bold renders all
+    three as tofu, and only DejaVu carries `▶`/`♫` (never `⏸`). This is exactly
+    the silent-glyph class v0.34 closed for `ELLIPSIS` ("every font in the
+    catalogs carries the glyph, locked by test") — the tag strings were simply
+    never audited. Decide: (a) replace the tags with catalog-universal text
+    (plain "PLAYING"/"PAUSED"/"MEDIA", or ASCII-safe markers that exist in
+    every catalog font), (b) keep the glyphs but reorder/extend the catalog so
+    a carrying font wins, or (c) per-glyph fallback at draw time — and record
+    why the chosen fix cannot drift. Extend the v0.34 `.notdef`-comparison
+    coverage lock to EVERY literal string the renderers draw (header tags,
+    "AK820 Pro Display", "AJAZZ AK820 PRO", "TEMP"/"UPTIME"/"CPU"/"RAM",
+    "TODAY!"/"TOMORROW"/"DAYS", state labels), so a literal can never be added
+    that some catalog font renders as tofu. While there (minor, record findings
+    either way): `card` is the only render command WITHOUT `--save-preview`
+    (radar/hud/media all have it — a dry-run digest is not a PNG preview), and
+    `events list` renders a hand-edited multi-line note ragged across table
+    rows (loader stays permissive by the m27/m28 decision — flatten for
+    DISPLAY only at the print seam, not in the data).

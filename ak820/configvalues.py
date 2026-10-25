@@ -44,8 +44,15 @@ Rules:
   single value. `--note` is deliberately NOT length-bounded — see
   `validate_max_len`'s reason: the renderer now marks truncation instead of
   hiding it, and any usable bound would still permit text that truncates.
+* `validate_single_line` (m31b, v0.36.0) rejects a line break in text that
+  renders on ONE line (`events add --short`/`--title`/`--note`, `card
+  --title`/`--value`/`--sub`/`--footer`). v0.35.0 made every renderer CONTAIN a
+  break by flattening it, but containment is degradation — the reader never
+  learns the text lost its shape. The creation path refuses what the renderer
+  can only degrade (the m18/m27/m29 stance); the loader stays permissive.
 """
 
+import re
 import string
 
 from .errors import ConfigError
@@ -137,6 +144,42 @@ def validate_nonblank(value: str, where: str) -> str:
     if not stripped:
         raise ConfigError(f"{where} must not be empty or whitespace-only.")
     return stripped
+
+
+# m31b (v0.36.0): the CLI half of the single-line rule. The pattern is a
+# deliberate PIL-free TWIN of `screen._LINE_BREAK_RE` (v0.35.0): this module
+# sits under the PIL-free events domain (§10.2 — `events add` must never load
+# PIL), so the vocabulary cannot be imported from its render-side home. The
+# two definitions are locked equal by an equivalence table in
+# tests/test_minors_v036.py instead: one rule, two homes, test-enforced.
+_LINE_BREAK_RE = re.compile("[\\n\\r\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029]+")
+
+
+def validate_single_line(value: str, where: str) -> str:
+    """Reject text that contains a line break (m31b, v0.36.0). ConfigError 6.
+
+    Every field this guards renders on a single line — the 128x128 screen's
+    one-line boxes and the `events list` table alike. Since v0.35.0 the
+    renderer flattens a break to a space instead of letting it escape its
+    box, but a silently re-shaped string is still a lie about what the user
+    typed: the CLI names the problem and the fix at the entry point, exactly
+    as m27 named blank and m29 named an inert note. Composes AFTER
+    `validate_nonblank` (call it on the stripped text). The value is returned
+    unchanged — unlike blank/placeholder text there is nothing to normalize.
+
+    Trust boundary (m27/m28/m29, table-locked): the loader stays permissive —
+    a hand-edited `note`/`short_title` containing `\\n` still loads and
+    renders, contained by `screen.flatten_lines`, because rejecting data the
+    user already wrote would brick whole configs. Only the creation path
+    refuses; a note a re-add PRESERVES from such a config is not re-judged
+    here either (it is hand-edited data arriving through the permissive door).
+    """
+    if _LINE_BREAK_RE.search(value):
+        raise ConfigError(
+            f"{where} contains a line break; this field renders on a single "
+            f"line. Replace the break with a space."
+        )
+    return value
 
 
 def validate_max_len(value: str, where: str, limit: int) -> str:
