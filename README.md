@@ -249,6 +249,13 @@ mkdir -p ~/.config/systemd/user && cp systemd/ak820-* ~/.config/systemd/user/
 systemctl --user daemon-reload && systemctl --user enable --now ak820-radar.timer ak820-hud.service
 ```
 
+**Out of scope by decision (v0.39.0):** the adaptive policy daemon
+`ak820-smartd` (media → HUD → radar screen arbitration) is a personal-
+environment integration — its unit and script live in `~/personal-data`
+(git-backed there), hard-code one machine's paths, and probe personal
+tooling. Vendoring them into `systemd/` would couple this repo to one
+machine's layout, so the repo ships only the generic units above.
+
 ## Exit Codes
 
 Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers can branch on the exit code without parsing stderr:
@@ -285,6 +292,7 @@ Since v0.9.0 the implementation lives in the `ak820/` package (every module < 30
 | `ak820/errors.py` | Error taxonomy + exit-code contract above |
 | `ak820/events.py` | Events-config domain: path resolution, date validation, shape checks, countdown rows (PIL-free) |
 | `ak820/dates.py` | Locale-independent calendar text: the fixed C-locale month table behind every drawn date label (PIL-free leaf) |
+| `ak820/textwidth.py` | Terminal display width at the print seam: CJK-aware column padding for `events list` / `backlight list` (stdlib leaf) |
 | `ak820/configvalues.py` | Field-value coercion at the `load_events_config` choke point (m18/m21) |
 | `ak820/parser.py` | The argparse surface: what the CLI accepts, nothing else |
 | `ak820/cli.py` | Offline-first routing, `--dry-run`, discovery, exit-code `main()` |

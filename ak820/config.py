@@ -8,7 +8,7 @@ import datetime
 import json
 import os
 
-from . import configvalues, events
+from . import configvalues, events, textwidth
 from .errors import ConfigError, InvalidFileError
 
 
@@ -64,16 +64,15 @@ def cmd_events(args):
             print(f"{'EVENT':<22} {'NEXT DATE':<12} {'LEFT':<8} {'MILESTONE':<12} {'URGENCY'}")
             print("-" * 68)
             for u in upcoming:
-                # m32 (v0.37.0): a hand-edited config may hold a note/title with
-                # a literal newline (the loader stays permissive, m27/m28). The
-                # table is a one-line-per-row surface, so the break is flattened
-                # HERE, at the print seam — the stored bytes and `--json` (which
-                # is data, not display) keep the original text.
-                title = configvalues.flatten_for_display(u["title"])
-                milestone = configvalues.flatten_for_display(u["milestone_str"])
-                print(
-                    f"{title:<22} {u['next_date']!s:<12} {str(u['days_left']) + 'd':<8} {milestone:<12} {u['theme_key']}"
-                )
+                # m32 (v0.37.0): a break in hand-edited text is flattened at the
+                # print seam only. m33 (v0.39.0): columns pad to DISPLAY width
+                # (CJK = 2 cells), never char count — `--json` and stored bytes
+                # stay raw (the m27/m28 boundary).
+                title = textwidth.pad(configvalues.flatten_for_display(u["title"]), 22)
+                milestone = textwidth.pad(configvalues.flatten_for_display(u["milestone_str"]), 12)
+                next_col = textwidth.pad(str(u["next_date"]), 12)
+                left_col = textwidth.pad(f"{u['days_left']}d", 8)
+                print(f"{title} {next_col} {left_col} {milestone} {u['theme_key']}")
         return 0
     elif action == "add":
         events.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date

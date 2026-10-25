@@ -107,6 +107,9 @@ def get_system_stats() -> dict:
         "temp_c": temp_c,
         "uptime": uptime_str,
         "hostname": hostname,
+        # Numeric-strftime exemption class (v0.39.0): %H/%M are locale-
+        # independent digits — no LC_TIME spelling can move a byte here
+        # (the exemption and its allow-list lock are documented in dates.py).
         "time": datetime.datetime.now().strftime("%H:%M"),
     }
 

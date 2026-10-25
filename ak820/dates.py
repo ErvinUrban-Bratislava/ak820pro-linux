@@ -15,6 +15,15 @@ Why a leaf module: `cards.py` may never import `events.py` (§10.2, locked
 since v0.25.0 — renderers consume plain row dicts) and `events.py` must stay
 PIL-free, so the shared table can live in neither consumer. `dates.py` is
 PIL-free and imports nothing from the package: a legal dependency of both.
+
+Numeric-strftime exemption class (documented v0.39.0 so a later audit does
+not re-open it): `telemetry.py`'s `"%H:%M"` and `device.py`'s
+`"%Y-%m-%d %H:%M:%S"` remain `strftime` calls, correctly — every directive
+in them is numeric, so no `LC_TIME` setting can move a byte of their output.
+The `%b` ban bans locale-dependent directives in drawn text, not `strftime`
+itself; the directive allow-list in tests/test_minors_v039.py pins the whole
+shipped `strftime` surface to numeric directives, so a future `%A`/`%p`/`%c`
+cannot slip in and these two sites stay exempt by construction.
 """
 
 import datetime

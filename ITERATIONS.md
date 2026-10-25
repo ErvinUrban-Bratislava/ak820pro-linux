@@ -43,6 +43,7 @@
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
 | `v0.37.0` | 2026-10-25 | Done | m32 closed (row added retroactively in v0.38.0 — the v0.37.0 iteration updated the queue but not this table): media-header tags `▶ PLAYING`/`⏸ PAUSED` rendered TOFU on the production font (no catalog font carries `⏸` at all — the fact that decided the fix); tags became catalog-universal ASCII `PLAYING`/`PAUSED`/`MEDIA`; the drift lock is STATIC (every drawn literal ASCII except a probed allow-list `…`/`•`/`°`, AST-extracted from all renderers) so a tofu literal can never be added; minors: `card --save-preview` (same validation seam as live), `events list` flattens multi-line notes at the PRINT seam only (`configvalues.flatten_for_display`, PIL-free twin table-locked), `--force` help one-home | `python3 -m unittest` 726/726 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.38.0` | 2026-10-25 | Done | The glyph audit's three remaining edges closed: the last-resort `load_default` fallback is a typed `FontMissingError` (exit 10) instead of a silent tofu degrade (measured: that face renders `•` as `.notdef`) — the allow-list promise now covers every font `_load_font` can return; locale-dependent `%b` drawn text replaced by the fixed C-locale month table in new PIL-free leaf `ak820/dates.py` (one home — cards may not import events, events stay PIL-free — `%b` AST-banned from shipped literals); user text (MPRIS/notes) DECIDED pass-through, no render-seam substitution — the `.notdef` box IS the mark, boundary locked behaviorally | `python3 -m unittest` 750/750 + `scripts/lint.sh` GREEN + live real-hardware probes |
+| `v0.39.0` | 2026-10-25 | Done | The print seam's own m31b closed: `events list`/`backlight list` pad every dynamic column by DISPLAY width via new stdlib-only leaf `ak820/textwidth.py` (east_asian_width W/F = 2 cells — char-count padding shifted every following column of a CJK row, live-reproved; `--json` and stored bytes keep raw codepoints); numeric-strftime exemption class documented in `dates.py` + both sites and pinned by a directive allow-list; `ak820-smartd` DECIDED to stay OUT of the repo (personal-data coupling), boundary documented in README | `python3 -m unittest` 781/781 + `scripts/lint.sh` GREEN + live device-free probes (CJK table aligned, presets table byte-stable) |
 
 ---
 
@@ -828,7 +829,7 @@
     the terminal table — queued below as v0.39.0.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
 
-- [ ] **`v0.39.0`** — the print-seam's own m31b: `events list` pads its table
+- [x] **`v0.39.0`** — the print-seam's own m31b: `events list` pads its table
     columns by CHARACTER COUNT (`str.ljust`/format specs), the exact proxy
     class m31b rejected for the screen — a title or note containing
     East-Asian-wide codepoints (CJK renders 2 terminal cells per char) shifts
@@ -845,4 +846,48 @@
     daemon `ak820-smartd` (unit + `ak820_smartd.py`) lives outside the repo
     while `systemd/` ships hud/radar units — decide whether vendoring the
     smartd unit into the repo is worth the personal-data coupling.
+  - CLOSED (v0.39.0): DECIDED pad by DISPLAY width over documenting the ragged
+    table as accepted — the char-count proxy is a class the screen side already
+    closed (m31b); pinning it here would relocate the defect, not resolve it.
+    New stdlib-only leaf `ak820/textwidth.py`: `display_width` (east_asian_width
+    W/F = 2 cells; Mn/Me combining marks and explicit zero-width codepoints = 0;
+    ambiguous = 1 — the Western production terminal, boundary documented) and
+    `pad` (ljust semantics measured in cells; over-wide cells left whole —
+    marked, not amputated, the v0.34/v0.36 stance). Both print seams route
+    every dynamic column through it (`events list` title/date/left/milestone,
+    `backlight list` key/name/mode/color); `--json` and stored bytes keep raw
+    codepoints (m27/m28 boundary, test-proven). Anti-recurrence: AST lock —
+    every `:<N` spec in the two table modules must format a string CONSTANT
+    (the headers), `.ljust` banned, pad-call counts pinned per table,
+    `textwidth` locked to a `unicodedata`-only leaf (fresh-interpreter import).
+    (a) numeric-strftime exemption class documented in `dates.py` and at both
+    sites, pinned by a directive allow-list over every shipped `strftime`
+    literal — locale-dependent directives become unrepresentable, the two
+    numeric sites stay exempt by construction. (b) DECIDED NOT to vendor
+    `ak820-smartd`: its unit and script hard-code one machine's paths and
+    probe personal tooling from `~/personal-data` (git-backed there);
+    vendoring would couple this repo to one machine's layout — boundary
+    documented in README, locked structurally (no smartd unit in `systemd/`).
+    Found while probing: `\t` is NOT a line break — `validate_single_line`
+    accepts it and no width rule can align a tab (tab stops are position-
+    dependent; live-reproved: title `A\tB` shifts every following cell) and
+    the table geometry is duplicated magic numbers (widths 22/12/8/12 in the
+    header literal AND every pad call; separators `"-" * 68`/`"-" * 80`
+    undriven by them) — queued below as v0.40.0.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+
+- [ ] **`v0.40.0`** — the print seam's last unaligned input: TAB. `\t` is not
+    a line break, so `validate_single_line` accepts it in `--short`/`--title`/
+    `--note`, and `display_width` cannot align it — a tab advances to the next
+    tab stop, which depends on where the row already is (live-reproved: title
+    `A\tB` shifts every following cell). Decide: reject tabs at the CLI
+    (extend the single-line vocabulary — a tab is as unrenderable-on-a-line as
+    a break, the m31b stance) or flatten at the print seam (tab -> space in
+    `flatten_for_display`'s vocabulary, the m32 stance); one rule, both
+    renderers' twins locked equal as v0.36/v0.37 did. While there: the table
+    geometry is duplicated magic numbers — column widths 22/12/8/12 appear in
+    the header literal AND every `pad` call, and the separators (`"-" * 68`
+    events, `"-" * 80` backlight) are not derived from them; single-home the
+    widths as constants and derive the rule length from them (m23's one-home
+    pattern applied to table geometry).
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
