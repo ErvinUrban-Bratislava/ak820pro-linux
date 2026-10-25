@@ -192,19 +192,30 @@ def render_media_card(media: dict | None = None) -> Image.Image:
     is_playing = media.get("status") == "Playing"
     is_paused = media.get("status") == "Paused"
 
-    # Header Bar
+    # Header Bar. m32 (v0.37.0): the tags are ASCII by decision — they used to
+    # read "▶ PLAYING"/"⏸ PAUSED"/"♫ MEDIA" and rendered TOFU on production.
+    # A .notdef-mask comparison (a glyph is tofu when its mask is identical to
+    # the font's .notdef / an unassigned PUA codepoint) measured live:
+    # LiberationSans-Bold — the FIRST catalog entry, installed on production and
+    # in CI — draws ▶ and ⏸ as its tofu box, NotoSans-Bold draws all three as
+    # blank .notdef, and NO catalog font carries ⏸ at all. So no catalog reorder
+    # could fix it (nothing to promote) and per-glyph fallback had nowhere to
+    # fall back to; the only fix that cannot drift is to spell the state in
+    # glyphs every catalog font provably has. The state is not lost: the header
+    # COLOUR (emerald/amber/slate) and the bottom status bar already carry it.
+    # tests/test_minors_v037.py locks every drawn literal against every font.
     if is_playing:
         header_bg = (16, 185, 129)
         header_fg = (6, 24, 16)
-        tag = "▶ PLAYING"
+        tag = "PLAYING"
     elif is_paused:
         header_bg = (245, 158, 11)
         header_fg = (24, 16, 6)
-        tag = "⏸ PAUSED"
+        tag = "PAUSED"
     else:
         header_bg = (30, 41, 59)
         header_fg = (148, 163, 184)
-        tag = "♫ MEDIA"
+        tag = "MEDIA"
 
     draw.rectangle([0, 0, SCREEN_W - 1, 18], fill=header_bg)
     draw.text((6, 3), tag, fill=header_fg, font=font_bold_s)

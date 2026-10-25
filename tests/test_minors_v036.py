@@ -129,12 +129,18 @@ def _legacy_render_media_card(media: dict) -> Image.Image:
     font_reg_s = _load_font(screen.FONT_REGULAR_PATHS, 9)
     is_playing = media.get("status") == "Playing"
     is_paused = media.get("status") == "Paused"
+    # m32 (v0.37.0) deliberately changed the header TAG LITERAL ("▶ PLAYING" ->
+    # "PLAYING" — the glyphs rendered .notdef tofu on the production font). This
+    # frozen copy exists to prove the v0.36 CONTAINMENT algorithm is byte-identical
+    # for the DYNAMIC strings (title/artist/album); the tag is a literal, not a
+    # dynamic string, so it tracks the current renderer and the parity claim is
+    # unchanged. tests/test_minors_v037.py owns the tag's own lock.
     if is_playing:
-        header_bg, header_fg, tag = (16, 185, 129), (6, 24, 16), "▶ PLAYING"
+        header_bg, header_fg, tag = (16, 185, 129), (6, 24, 16), "PLAYING"
     elif is_paused:
-        header_bg, header_fg, tag = (245, 158, 11), (24, 16, 6), "⏸ PAUSED"
+        header_bg, header_fg, tag = (245, 158, 11), (24, 16, 6), "PAUSED"
     else:
-        header_bg, header_fg, tag = (30, 41, 59), (148, 163, 184), "♫ MEDIA"
+        header_bg, header_fg, tag = (30, 41, 59), (148, 163, 184), "MEDIA"
     draw.rectangle([0, 0, 127, 18], fill=header_bg)
     draw.text((6, 3), tag, fill=header_fg, font=font_bold_s)
     title = media.get("title", "No Track")

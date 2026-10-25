@@ -36,20 +36,34 @@ def render_radar(args):
     return frames, delays, label
 
 
-def render_card(args):
+def card_image(args):
+    """The validated custom-card IMAGE — the one seam live, --dry-run and preview share.
+
+    m31b (v0.36.0): the single validation seam for card text, shared by the
+    live upload and --dry-run so both paths fail identically (the D12
+    precedent). A line break is unrenderable on the card's one-line boxes —
+    the renderer can only flatten it (v0.35.0), which degrades silently —
+    so the creation path refuses it (ConfigError 6) instead.
+
+    m32 (v0.37.0): `card --save-preview` joins that seam rather than opening a
+    second one. A preview is the same render the user would upload, so it must
+    be rejected by the same rule; a preview-only path that skipped validation
+    would let `--save-preview` show a card the CLI refuses to send.
+    """
     from . import cards  # rendering domain: function-level per §10.2
 
-    # m31b (v0.36.0): the single validation seam for card text, shared by the
-    # live upload and --dry-run so both paths fail identically (the D12
-    # precedent). A line break is unrenderable on the card's one-line boxes —
-    # the renderer can only flatten it (v0.35.0), which degrades silently —
-    # so the creation path refuses it (ConfigError 6) instead.
     title = configvalues.validate_single_line(args.title, f"--title {args.title!r}")
     value = configvalues.validate_single_line(args.value, f"--value {args.value!r}")
     sub = configvalues.validate_single_line(args.sub, f"--sub {args.sub!r}")
     footer = configvalues.validate_single_line(args.footer, f"--footer {args.footer!r}")
-    img = cards.render_custom_card(title, value, sub, footer, args.theme)
-    label = f"card:{title}:{value}:{sub}:{footer}:{args.theme}"
+    return cards.render_custom_card(title, value, sub, footer, args.theme)
+
+
+def render_card(args):
+    img = card_image(args)
+    title, value = args.title, args.value
+    sub, footer, theme = args.sub, args.footer, args.theme
+    label = f"card:{title}:{value}:{sub}:{footer}:{theme}"
     return [image_to_rgb565(img)], None, label
 
 

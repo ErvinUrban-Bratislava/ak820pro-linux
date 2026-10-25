@@ -684,7 +684,7 @@
     ends x=101, media title text x=123, both inside their borders; version 0.36.0).
     Found while probing: m32 queued below.
 
-- [ ] **`v0.37.0`** — m32 (found during the v0.36.0 probes): the media card's
+- [x] **`v0.37.0`** — m32 (found during the v0.36.0 probes): the media card's
     header tags render TOFU on the production font. `render_media_card` draws
     `"▶ PLAYING"` / `"⏸ PAUSED"` / `"♫ MEDIA"` with `FONT_BOLD_PATHS`, but a
     `.notdef`-mask comparison (measured live in v0.36.0): LiberationSans-Bold —
@@ -708,3 +708,76 @@
     `events list` renders a hand-edited multi-line note ragged across table
     rows (loader stays permissive by the m27/m28 decision — flatten for
     DISPLAY only at the print seam, not in the data).
+  - CLOSED (v0.37.0): re-measured live before fixing (`.notdef`-mask + PUA-mask
+    comparison against every catalog font on disk): LiberationSans-Bold draws
+    `▶`/`⏸` as its tofu box, NotoSans-Bold draws `▶`/`⏸`/`♫` as a BLANK
+    `.notdef`, DejaVuSans-Bold carries `▶`/`♫` but not `⏸` — **no catalog font
+    carries `⏸` at all**, which is the fact that decided the fix.
+    DECIDED (a) catalog-universal text: the tags are now plain `PLAYING`/`PAUSED`/
+    `MEDIA`. (b) reordering the catalog cannot promote a glyph no catalog has, and
+    it moves every other render on the machine; (c) per-glyph fallback has nothing
+    to fall back TO here and would break `fit_text`'s "containment is a property of
+    the (font, text) PAIR" contract. The state is not lost — header COLOUR
+    (emerald/amber/slate) and the bottom status bar already carry it.
+    WHY IT CANNOT DRIFT: the lock is STATIC, not a probe. Every string literal a
+    renderer draws (AST-extracted from `cards.py`/`hud.py`/`palette.py` + the
+    module-level constants of `screen.py`, docstrings excluded) must be ASCII
+    except a named allow-list (`…` ellipsis, `•` separator, `°` unit), and every
+    allow-list member must (i) actually be drawn and (ii) pass the `.notdef`/PUA
+    probe on every installed catalog font. A probe-only lock can only see the
+    fonts on the runner; an ASCII-only rule needs no font at all, so a new literal
+    cannot be added that some font renders as tofu. The probe matrix is still run
+    over the whole extracted character set (so `…`/`•`/`°` and every ASCII literal
+    are proven, not assumed), the extractor is itself guarded by a table of the
+    strings the queue named, and the harness is proven non-vacuous by asserting it
+    DOES flag `⏸` on every catalog font.
+    Minors, both fixed at their seam: `card --save-preview` exists and renders
+    through `renderers.card_image` — the ONE seam live upload and `--dry-run`
+    already share, so a card the CLI refuses (6) is never previewed as sendable
+    (unusable targets 9, D14/D23 classes); `events list` flattens a hand-edited
+    multi-line note/title at the PRINT seam only (`configvalues.flatten_for_display`,
+    the PIL-free twin of `screen.flatten_lines`, equivalence-table-locked) while
+    `--json` and the stored bytes keep the raw text (m27/m28 boundary).
+    `upload --force`'s divergent wording was folded into the same `_FORCE_HELP`
+    constant so one flag has one wording across all five render commands.
+  - Verify `python3 -m unittest` 726/726 (33 new offline tests in
+    `tests/test_minors_v037.py`: probe-harness vacuity guards, every-drawn-literal
+    glyph lock, ASCII-only + allow-list lock, live media-header pixel parity for
+    all three states + a `.notdef`-box control, flatten-twin equivalence table,
+    `events list` one-row/`--json`-raw/no-write, `card --save-preview` happy +
+    exit-6-before-write + exit-9 targets + byte parity with the live seam, parser
+    surface locks, source invariants) + `scripts/lint.sh` GREEN (ruff+mypy) +
+    live **real-hardware** probes (`media` and `card` uploaded to /dev/hidraw2
+    exit 0; the device-free `media --save-preview` PNG's header ink is
+    pixel-identical to a reference render of "PLAYING" — 232 px, x=6..49 — and
+    differs from the `.notdef`-box control; `card --save-preview` -> 128x128 PNG;
+    `ak820-smartd` restarted afterwards so no test card was left on the screen);
+    version 0.37.0.
+    Found while probing, queued below: PIL's `load_default` last-resort face has
+    no `•`, `%b` month names are locale-dependent drawn text, and user-authored
+    text (MPRIS titles, notes) can hold any codepoint the catalogs lack.
+
+- [ ] **`v0.38.0`** — the glyph audit's three remaining edges, each measured in
+    v0.37.0 and deliberately left out of that iteration's scope:
+    * **The last-resort font is outside the lock.** `_load_font` falls back to
+      `ImageFont.load_default(size=...)` when NO catalog path exists, and that
+      Pillow-bundled face renders `•` (U+2022) as `.notdef` tofu (measured) —
+      so on a font-less runner the hero header and board meta separators read
+      "□". Every catalog font carries it, so production and CI are unaffected;
+      v0.37.0 locks ASCII on the default face and documents the gap. Decide:
+      give the separator an ASCII spelling, extend the catalogs with a face that
+      is guaranteed present, or make "no catalog font installed" a typed startup
+      error instead of a silent degrade.
+    * **Locale-dependent drawn text.** `today.strftime("%b %d")` feeds the board
+      header and hero subtitle, and `%b` is locale-dependent: a non-C locale can
+      emit non-ASCII month abbreviations (e.g. `dec.` with an accent) that no
+      literal lock can see. Decide: render dates through a fixed C-locale month
+      table (one home, byte-stable output), or glyph-probe the formatted string
+      at draw time and mark what the font cannot show.
+    * **User text is unbounded by definition.** Media titles/artists from MPRIS
+      and hand-authored notes can contain any codepoint (emoji, CJK, symbols)
+      and tofu exactly like the tags did. The v0.37 lock covers LITERALS only —
+      that boundary is recorded, not accidental. Decide whether a render-seam
+      substitution (replace unmappable codepoints with a visible mark) is worth
+      its cost on a 128x128 status screen, and record the decision either way.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

@@ -50,6 +50,9 @@ Rules:
   break by flattening it, but containment is degradation — the reader never
   learns the text lost its shape. The creation path refuses what the renderer
   can only degrade (the m18/m27/m29 stance); the loader stays permissive.
+* `flatten_for_display` (m32, v0.37.0) is that rule's display half: a break a
+  hand-edited config already holds keeps its stored bytes and is flattened only
+  on the way to the one-line `events list` table.
 """
 
 import re
@@ -153,6 +156,10 @@ def validate_nonblank(value: str, where: str) -> str:
 # two definitions are locked equal by an equivalence table in
 # tests/test_minors_v036.py instead: one rule, two homes, test-enforced.
 _LINE_BREAK_RE = re.compile("[\\n\\r\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029]+")
+# Twin of `screen._WS_RUN_RE` (m32, v0.37.0): `flatten_for_display` needs the
+# same collapse step its render-side twin does, so the two flatteners stay one
+# rule rather than two dialects.
+_WS_RUN_RE = re.compile(r"\s+")
 
 
 def validate_single_line(value: str, where: str) -> str:
@@ -180,6 +187,27 @@ def validate_single_line(value: str, where: str) -> str:
             f"line. Replace the break with a space."
         )
     return value
+
+
+def flatten_for_display(value: str) -> str:
+    """Collapse line breaks to spaces for a ONE-LINE display surface (m32, v0.37.0).
+
+    This is the DISPLAY half of the single-line rule, and it is deliberately not
+    `validate_single_line`: the CLI still refuses a break in text it is about to
+    CREATE, while a hand-edited config that already holds one keeps loading and
+    keeps its stored bytes (the m27/m28/m29/m31b trust boundary). `events list`
+    prints through this so such a note cannot break the table's row structure —
+    ragged rows are the print-seam equivalent of the render overflow m31 closed.
+
+    The PIL-free twin of `screen.flatten_lines` (same `_LINE_BREAK_RE` vocabulary
+    as `validate_single_line`, same collapse-and-strip shape): `events list` must
+    never import PIL, so the rule has two homes locked equal by the equivalence
+    table in tests/test_minors_v037.py. Only the printed copy is flattened —
+    `events list --json` keeps the raw stored value, because that output is data.
+    """
+    if not value or not _LINE_BREAK_RE.search(value):
+        return value
+    return _WS_RUN_RE.sub(" ", _LINE_BREAK_RE.sub(" ", value)).strip()
 
 
 def validate_max_len(value: str, where: str, limit: int) -> str:

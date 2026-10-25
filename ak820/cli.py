@@ -18,7 +18,13 @@ import logging
 import sys
 
 from .actions import describe_payload
-from .config import cmd_events, cmd_hud_preview, cmd_media_preview, cmd_radar_preview
+from .config import (
+    cmd_card_preview,
+    cmd_events,
+    cmd_hud_preview,
+    cmd_media_preview,
+    cmd_radar_preview,
+)
 from .discovery import find_hidraw_devices  # v0.19.0: sysfs discovery module (§18)
 from .errors import AK820Error, DeviceNotFoundError
 from .handlers import (  # noqa: F401  (backward-compat re-exports)
@@ -64,6 +70,8 @@ def _dispatch(args):
         return cmd_hud_preview(args)
     if args.command == "media" and getattr(args, "save_preview", None):
         return cmd_media_preview(args)
+    if args.command == "card" and getattr(args, "save_preview", None):
+        return cmd_card_preview(args)
 
     # m22 (v0.29.0 re-audit, §25): probe is pure sysfs observation — it opens
     # no hidraw node and sends zero USB bytes — so --dry-run must not swallow

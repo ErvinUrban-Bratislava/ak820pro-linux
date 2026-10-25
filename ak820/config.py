@@ -64,8 +64,15 @@ def cmd_events(args):
             print(f"{'EVENT':<22} {'NEXT DATE':<12} {'LEFT':<8} {'MILESTONE':<12} {'URGENCY'}")
             print("-" * 68)
             for u in upcoming:
+                # m32 (v0.37.0): a hand-edited config may hold a note/title with
+                # a literal newline (the loader stays permissive, m27/m28). The
+                # table is a one-line-per-row surface, so the break is flattened
+                # HERE, at the print seam — the stored bytes and `--json` (which
+                # is data, not display) keep the original text.
+                title = configvalues.flatten_for_display(u["title"])
+                milestone = configvalues.flatten_for_display(u["milestone_str"])
                 print(
-                    f"{u['title']:<22} {u['next_date']!s:<12} {str(u['days_left']) + 'd':<8} {u['milestone_str']:<12} {u['theme_key']}"
+                    f"{title:<22} {u['next_date']!s:<12} {str(u['days_left']) + 'd':<8} {milestone:<12} {u['theme_key']}"
                 )
         return 0
     elif action == "add":
@@ -255,6 +262,22 @@ def cmd_radar_preview(args):
     _save_preview(cards.render_hero_card(upcoming, today=today), p1)
     _save_preview(cards.render_board_card(upcoming, today=today), p2)
     print(f"Saved previews to {p1} and {p2}")
+    return 0
+
+
+def cmd_card_preview(args):
+    """`card --save-preview FILE`: the custom card PNG, no device (m32, v0.37.0).
+
+    `card` was the only render command without a preview (`--dry-run` answers
+    with a digest, not a picture). It renders through `renderers.card_image`,
+    the ONE seam live upload and --dry-run share, so a card the CLI refuses
+    (ConfigError 6) is never previewed as though it were sendable.
+    """
+    from . import renderers  # render domain: function-level, keeps config/renderers acyclic
+
+    img = renderers.card_image(args)
+    _save_preview(img, _prepare_preview_file(args.save_preview))
+    print(f"Saved card preview to {args.save_preview}")
     return 0
 
 

@@ -50,6 +50,14 @@ def non_negative_float(value: str) -> float:
 _CONFIG_HELP = (
     "Path to events JSON config (default: ~/.config/ak820/events.json or $AK820_EVENTS_PATH)"
 )
+# One wording per repeated flag (m32, v0.37.0): `--force` meant the same thing on
+# every render command and `--save-preview` means the same thing on every FILE
+# preview target (`radar` takes a directory, so it keeps its own wording). The
+# constants are what the tests compare against, so a reworded flag cannot leave
+# one command behind.
+_FORCE_HELP = "Upload even if identical payload is already on screen"
+_PREVIEW_HELP = "Save rendered PNG preview to file instead of uploading"
+_WATCH_HELP = "Continuously refresh every N seconds (e.g. --watch {})"
 
 
 def build_parser():
@@ -78,9 +86,9 @@ def build_parser():
     p.add_argument(
         "--fit", choices=["fill", "contain", "stretch"], default="fill", help="Image fit mode"
     )
-    p.add_argument(
-        "--force", action="store_true", help="Upload even if identical payload is already active"
-    )
+    # m32 (v0.37.0): `upload` worded the same flag differently ("already active")
+    # from every other render command; one flag, one wording, one constant.
+    p.add_argument("--force", action="store_true", help=_FORCE_HELP)
 
     p = sub.add_parser("radar", help="Render and upload Family Milestone Radar to the screen")
     p.add_argument(
@@ -103,9 +111,7 @@ def build_parser():
     p.add_argument(
         "--sync-clock", action="store_true", help="Also synchronize the keyboard RTC clock"
     )
-    p.add_argument(
-        "--force", action="store_true", help="Upload even if identical payload is already on screen"
-    )
+    p.add_argument("--force", action="store_true", help=_FORCE_HELP)
 
     p = sub.add_parser("card", help="Render and upload a custom AI/status card to the screen")
     p.add_argument(
@@ -122,39 +128,27 @@ def build_parser():
         default="soon",
         help="Color theme (soon=cyan, warn=gold, urgent=red, today=magenta/gold, calm=blue, green=emerald)",
     )
-    p.add_argument(
-        "--force", action="store_true", help="Upload even if identical payload is already on screen"
-    )
+    # m32 (v0.37.0): `card` was the only render command without a PNG preview —
+    # --dry-run answers with a digest, which is not a picture. Same flag, same
+    # semantics, same validation seam as hud/media (config.cmd_card_preview).
+    p.add_argument("--save-preview", help=_PREVIEW_HELP)
+    p.add_argument("--force", action="store_true", help=_FORCE_HELP)
 
     p = sub.add_parser(
         "hud",
         aliases=["stats"],
         help="Render and upload live PC system stats HUD (CPU, RAM, Temp, Uptime)",
     )
-    p.add_argument("--save-preview", help="Save rendered PNG preview to file instead of uploading")
-    p.add_argument(
-        "--force", action="store_true", help="Upload even if identical payload is already on screen"
-    )
-    p.add_argument(
-        "--watch",
-        type=non_negative_float,
-        default=0,
-        help="Continuously refresh every N seconds (e.g. --watch 15)",
-    )
+    p.add_argument("--save-preview", help=_PREVIEW_HELP)
+    p.add_argument("--force", action="store_true", help=_FORCE_HELP)
+    p.add_argument("--watch", type=non_negative_float, default=0, help=_WATCH_HELP.format(15))
 
     p = sub.add_parser(
         "media", help="Render and upload Now Playing music/media card (Spotify, browser, VLC)"
     )
-    p.add_argument("--save-preview", help="Save rendered PNG preview to file instead of uploading")
-    p.add_argument(
-        "--force", action="store_true", help="Upload even if identical payload is already on screen"
-    )
-    p.add_argument(
-        "--watch",
-        type=non_negative_float,
-        default=0,
-        help="Continuously refresh every N seconds (e.g. --watch 10)",
-    )
+    p.add_argument("--save-preview", help=_PREVIEW_HELP)
+    p.add_argument("--force", action="store_true", help=_FORCE_HELP)
+    p.add_argument("--watch", type=non_negative_float, default=0, help=_WATCH_HELP.format(10))
 
     p = sub.add_parser("events", help="List, add, or remove family milestones")
     p.add_argument("--config", help=_CONFIG_HELP)
