@@ -18,7 +18,6 @@ unchanged — identity, not copies (locked by tests/test_modularity_v025.py).
 
 from ak820.cards import (  # noqa: F401  (re-exported for backward compatibility)
     _draw_category_icon,
-    _fit_text_font,
     render_board_card,
     render_custom_card,
     render_hero_card,
@@ -39,6 +38,11 @@ from ak820.palette import THEMES  # noqa: F401  (re-exported for backward compat
 # v0.8.0 render_common (m8): screen constants, font path catalogs, and the
 # lru_cache'd font loader are shared with widgets.py via ak820.screen; payload
 # dedup persistence moved to ak820.state (§2.1 layering inversion fix).
+# v0.34.0 (m30): `fit_text`/`ellipsize` (the fit-then-mark containment rule) join
+# them in `ak820.screen`, the shared render_common home. The old private
+# `_fit_text_font` is GONE rather than aliased: it returned only a font, and a
+# font alone cannot promise containment — aliasing the old name would have kept
+# the lie available to callers (recorded in ITERATIONS.md, not silently dropped).
 from ak820.screen import (  # noqa: F401  (re-exported for backward compatibility)
     FONT_BOLD_PATHS,
     FONT_MONO_PATHS,
@@ -46,6 +50,8 @@ from ak820.screen import (  # noqa: F401  (re-exported for backward compatibilit
     SCREEN_H,
     SCREEN_W,
     _load_font,
+    ellipsize,
+    fit_text,
 )
 from ak820.state import (  # noqa: F401  (re-exported for backward compatibility)
     DEFAULT_STATE_PATH,

@@ -45,7 +45,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import ak820_ctrl
-from ak820 import backlight, cli, configvalues, events, status
+from ak820 import backlight, cli, coercion, configvalues, events, status
 from ak820.errors import ConfigError
 
 
@@ -318,8 +318,10 @@ class TestShimSurfaceIntact(unittest.TestCase):
         self.assertIs(ak820_ctrl.get_idle_backlight_cfg, backlight.get_idle_backlight_cfg)
 
     def test_coerce_config_values_unchanged_signature(self):
+        # v0.34.0: the coercion engine moved to ak820.coercion (same signature,
+        # same behavior) when configvalues split along the loader/CLI seam.
         cfg = {"events": [{"title": 123}], "backlight": {"idle_rainbow": "false"}}
-        out = configvalues.coerce_config_values(cfg, "x")
+        out = coercion.coerce_config_values(cfg, "x")
         self.assertEqual(out["events"][0]["title"], "123")
         self.assertIs(out["backlight"]["idle_rainbow"], False)
 

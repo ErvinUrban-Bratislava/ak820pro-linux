@@ -71,9 +71,81 @@ def _load_font_cached(paths: tuple, size: int):
 
 def _load_font(paths, size: int):
     """First existing TTF from `paths` at `size`, cached via lru_cache (§4.2):
-    _fit_text_font probes up to 6 sizes per text element and --watch re-renders
+    `fit_text` probes up to 6 sizes per text element and --watch re-renders
     every refresh, so re-parsing the same TTF was pure waste."""
     return _load_font_cached(tuple(paths), size)
+
+
+# m30 (v0.34.0): the mark that says "there was more". Every font in the catalogs
+# above carries the glyph (locked by tests/test_minors_v034.py), and it is a
+# single character, so the mark costs less width than "..." at every size.
+ELLIPSIS = "…"
+
+
+def text_width(draw, text: str, font) -> float:
+    """Drawn width of `text` in pixels (bbox, matching every renderer's own math).
+
+    float because that is what PIL's `textbbox` reports; every renderer already
+    compared those floats against its box budget.
+    """
+    if not text:
+        return 0.0
+    bbox = draw.textbbox((0, 0), text, font=font)
+    return bbox[2] - bbox[0]
+
+
+def ellipsize(draw, text: str, font, max_width: float) -> str:
+    """Shorten `text` with a trailing `…` until it fits `max_width` at `font`.
+
+    m30 (v0.34.0), the second half of the containment rule: shrinking a font has
+    a floor, and below that floor the old behaviour was to draw the full string
+    anyway and let the screen cut it off — a 66-char note measured 288 px drawn
+    from x=11 into a 128 px panel, amputated mid-word and silent. An ellipsis is
+    the difference between *truncated* and *silently lost*: the reader sees that
+    text existed.
+
+    Text that already fits comes back unchanged (byte-for-byte identical renders
+    for every string that always fitted). Binary search on the joined candidate,
+    so the cost is O(log n) measurements even for a pathological note.
+    """
+    if not text or text_width(draw, text, font) <= max_width:
+        return text
+    if text_width(draw, ELLIPSIS, font) > max_width:
+        return ""  # the box cannot even hold the mark; draw nothing rather than overflow
+    lo, hi = 0, len(text) - 1  # the full string is known NOT to fit; "" + mark does
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if text_width(draw, text[:mid] + ELLIPSIS, font) <= max_width:
+            lo = mid
+        else:
+            hi = mid - 1
+    return text[:lo].rstrip() + ELLIPSIS
+
+
+def fit_text(draw, text: str, paths: list[str], max_size: int, min_size: int, max_width: float):
+    """Fit `text` into `max_width`: shrink the font, then ellipsize. Returns (font, text).
+
+    The single home of the "never draw outside the box" rule for every 128x128
+    renderer (m30, v0.34.0; lives in `screen` because it is a render_common
+    primitive shared by `cards` and `hud`, like the font catalogs and `_load_font`).
+
+    `fit_text_font` (the pre-v0.34 helper) shrank the font and stopped: at
+    `min_size` it returned the font whether or not the text fitted, so every
+    "fitted" call site could still overflow — measured live, the hero subtitle
+    overflowed by 199 px and the custom card's value by 182 px at their minimum
+    sizes. Containment is a property of the *pair* (font, text), so the pair is
+    what this returns: a caller cannot apply the font and forget the text.
+
+    Strings that fit at some size in [min_size, max_size] are returned verbatim
+    with the same font the old helper picked, so existing renders stay
+    byte-identical; only text that used to be clipped changes.
+    """
+    for sz in range(max_size, min_size - 1, -1):
+        font = _load_font(paths, sz)
+        if text_width(draw, text, font) <= max_width:
+            return font, text
+    font = _load_font(paths, min_size)
+    return font, ellipsize(draw, text, font, max_width)
 
 
 def _rgb565_rows(rgb) -> bytes:

@@ -5,7 +5,7 @@ m23: idle int fields were coerced but UNBOUNDED — a hand-edited
 `"idle_mode": 255` reached the wire as MODE_DATA[0] == 255 (outside the
 firmware's 0..19 mode range), `256` wrapped silently to 0 via `& 0xFF`, and
 brightness/speed/direction were silently clamped or masked (9 -> 5, 7 -> 3).
-`configvalues._as_int` now range-checks against bounds that live in
+`coercion._as_int` now range-checks against bounds that live in
 `protocol.py` and feed BOTH the loader and the parser's argparse choices —
 one home, CLI and loader can never drift. The field list is derived from the
 ranges dict, so an unbounded idle int field is no longer representable.
@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import ak820_ctrl
-from ak820 import backlight, cli, config, configvalues, events
+from ak820 import backlight, cli, coercion, config, events
 from ak820.parser import build_parser, finite_float, non_negative_float
 from ak820.protocol import MAX_BRIGHTNESS, MAX_DIRECTION, MAX_LIGHT_MODE, MAX_SPEED
 
@@ -145,7 +145,7 @@ class TestIdleIntBounds(unittest.TestCase):
     def test_bounds_single_home_and_derived_fields(self):
         # loader ranges ARE the protocol constants (no drift, no second copy)
         self.assertEqual(
-            configvalues._IDLE_INT_RANGES,
+            coercion._IDLE_INT_RANGES,
             {
                 "idle_mode": (0, MAX_LIGHT_MODE),
                 "idle_brightness": (0, MAX_BRIGHTNESS),
@@ -155,7 +155,9 @@ class TestIdleIntBounds(unittest.TestCase):
         )
         # m23's root cause is structurally dead: the int field list is DERIVED
         # from the ranges dict — an unbounded idle int field cannot exist.
-        self.assertEqual(configvalues._IDLE_INT_FIELDS, tuple(configvalues._IDLE_INT_RANGES))
+        # v0.34.0: the ranges/derived-field lists moved with the coercion
+        # engine into ak820.coercion; the derivation lock is unchanged.
+        self.assertEqual(coercion._IDLE_INT_FIELDS, tuple(coercion._IDLE_INT_RANGES))
 
     def test_parser_choices_derive_from_protocol_constants(self):
         # CLI <-> loader drift lock: argparse choices are built from the same

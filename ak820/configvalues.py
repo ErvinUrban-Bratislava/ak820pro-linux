@@ -1,40 +1,33 @@
-"""Events-config field VALUE coercion — the m18 choke point (v0.26.0).
+"""Entry-point rules for events-config values — what the CLI may CREATE (v0.26.0).
 
-D22 (v0.24.0) locked the config's SHAPE at `load_events_config` (top level,
-`events` list, entry objects). m18 (REVIEW.md §21) is the value half of the
-same coin: otherwise-valid entries with wrong-typed values crashed every
-downstream consumer with raw tracebacks — `"title": 123` -> `.lower()`/
-`.upper()` AttributeError and a TypeError in the sort key, `"note": "{years}
-in {place}"` -> KeyError in `note.format(years=...)`, `"idle_mode": "1"` ->
-TypeError in `set_backlight`'s byte assembly (`mode & 0xFF`).
+This module is the CLI half of one fix-the-config contract; the loader half lives
+in `ak820.coercion` (moved out here in v0.34.0 under the §10 line budget). The
+seam is which side of the trust boundary a rule runs on, and it decides where a
+rule belongs:
 
-Contract (mirrors D22's taxonomy at the same single choke point):
+* `ak820.coercion.coerce_config_values` runs at the `load_events_config` choke
+  point on data the user ALREADY WROTE (m18's wrong-typed values, m21's bool
+  spellings, m23's idle int bounds). It is permissive about anything that works:
+  rejecting a config the user already wrote turns every command into exit 6.
+* THIS module guards what the CLI is about to CREATE, where refusing is cheap
+  and silently accepting something inert is not (the m18/m27/m28/m29/m30 stance).
+  `validate_note` is the one rule both sides call — the `{years}` rule is a data
+  rule, not a CLI rule — so it stayed here and `coercion` imports it, never the
+  reverse (the dependency is one-way by design; a cycle would mean the seam was
+  drawn in the wrong place).
 
-* JSON scalars coerce losslessly — numbers/bools take their text form for
-  string fields; numeric strings and integral floats become ints for the
-  idle-backlight fields that feed byte arithmetic.
-* `null`, lists and objects have no lossless scalar form -> ConfigError (6),
-  the fix-the-config class, naming the offending `events[i].field` location.
-* `note` may only interpolate `{years}` — any other placeholder (or unbalanced
-  braces) is a ConfigError at load, never a KeyError at render time. m28
-  (v0.32.0): `validate_note` also strips incidental surrounding whitespace and
-  returns the normalized text, so a hand-edited blank note (`"   "`) becomes
-  the documented empty-note fallback ("Milestone") instead of rendering blank.
-* `idle_rainbow` is the one bool-valued field (m21, v0.28.0): bools pass
-  through, `0`/`1` ints and `"true"/"false"/"1"/"0"` text coerce losslessly,
-  everything else — `"yes"`, `2`, `null` — is ConfigError (6), never a truthy
-  guess in `set_backlight`'s `1 if rainbow else 0` byte assembly.
-* idle int fields are range-checked against the firmware/CLI bounds (m23,
-  v0.30.0): `idle_mode` 0..19 (mirrors `parse_mode`), brightness/speed 0..5
-  and direction 0..3 (mirror the argparse choices). A hand-edited 255 used to
-  reach the wire as byte 255 and 256 wrapped silently to 0 via `& 0xFF`.
-* `validate_nonblank` (m27, v0.31.0) is the CLI-side half of the same
-  fix-the-config contract: `events add --short`/`--title`/`--note` and the
-  `events remove` target must not be empty or whitespace-only (ConfigError 6,
-  the D4 precedent). The loader stays permissive for hand-edited data by
-  decision — the CLI can never CREATE a blank-field entry, and rejecting data
-  the user already wrote would turn every command into exit 6 (see
-  `validate_nonblank`'s trust-boundary note and REVIEW.md §28).
+Rules:
+
+* `validate_note` — a note may only interpolate `{years}`; any other placeholder
+  (or unbalanced braces) is a ConfigError, never a KeyError at render time. m28
+  (v0.32.0): it also strips incidental surrounding whitespace and returns the
+  normalized text, so a hand-edited blank note (`"   "`) becomes the documented
+  empty-note fallback ("Milestone") instead of rendering an empty column.
+* `validate_nonblank` (m27, v0.31.0) — `events add --short`/`--title`/`--note`
+  and the `events remove` target must not be empty or whitespace-only (ConfigError
+  6, the D4 precedent), and it returns the stripped text so normalization is
+  single-home. The loader stays permissive for hand-edited data by decision (see
+  its trust-boundary note and REVIEW.md §28).
 * A `note` is rendered for `milestone` entries ONLY (m29, v0.33.0):
   `compute_upcoming_events` never consults it for `birthday`/`anniversary`, so
   `--category birthday --note …` stored a note that could never appear on
@@ -45,39 +38,17 @@ Contract (mirrors D22's taxonomy at the same single choke point):
   `--category` choices and `events.py`'s renderer, `NOTE_INERT_CATEGORIES`
   names the categories that never consult a note — so a new category cannot be
   added to the CLI without this rule accounting for it (the m23 bounds pattern).
-
-`load_events_config` is the only caller of the coercion above; consumers that
-inject hand-built dicts directly (unit-test seams) bypass this and keep their
-own contract.
+* `validate_max_len` + `MAX_SHORT_LEN` (m30, v0.34.0) bound the one label-shaped
+  input the 128x128 screen cannot show in full; `parser.py`'s help text is built
+  from the same constant so the documented limit and the enforced one are a
+  single value. `--note` is deliberately NOT length-bounded — see
+  `validate_max_len`'s reason: the renderer now marks truncation instead of
+  hiding it, and any usable bound would still permit text that truncates.
 """
 
 import string
 
 from .errors import ConfigError
-from .protocol import MAX_BRIGHTNESS, MAX_DIRECTION, MAX_LIGHT_MODE, MAX_SPEED
-
-# String-valued event fields every consumer renders, lowercases or sorts by.
-_EVENT_TEXT_FIELDS = ("id", "title", "short_title", "date", "category", "note")
-# Idle-backlight fields persisted by `backlight set --save` (backlight.py).
-_IDLE_TEXT_FIELDS = ("idle_preset", "idle_color")
-# m23 (v0.30.0): every idle int field carries its firmware/CLI bound, and the
-# field list is DERIVED from this dict — an unbounded idle int field is no
-# longer representable, so m23's root cause (a coerced-but-unbounded int) is
-# structurally dead, not just patched. Bounds mirror the CLI exactly:
-# `parse_mode` 0..MAX_LIGHT_MODE and the argparse choices 0..5 / 0..3 live in
-# protocol.py + parser.py built from the same constants — one home, no drift.
-_IDLE_INT_RANGES: dict[str, tuple[int, int]] = {
-    "idle_mode": (0, MAX_LIGHT_MODE),
-    "idle_brightness": (0, MAX_BRIGHTNESS),
-    "idle_speed": (0, MAX_SPEED),
-    "idle_direction": (0, MAX_DIRECTION),
-}
-_IDLE_INT_FIELDS = tuple(_IDLE_INT_RANGES)
-# The one bool-valued idle field (m21): it feeds `1 if rainbow else 0` in
-# set_backlight's MODE_DATA byte, where any non-empty string is truthy.
-_IDLE_BOOL_FIELDS = ("idle_rainbow",)
-_TRUE_TEXTS = ("true", "1")
-_FALSE_TEXTS = ("false", "0")
 
 # m29 (v0.33.0): the event-category vocabulary has ONE home. `parser.py` builds
 # its `--category` choices from `EVENT_CATEGORIES` and `events.py` renders from
@@ -92,6 +63,16 @@ EVENT_CATEGORIES = (CATEGORY_BIRTHDAY, CATEGORY_ANNIVERSARY, CATEGORY_MILESTONE)
 # exactly the silent no-op m29 refuses to persist.
 NOTE_INERT_CATEGORIES = (CATEGORY_BIRTHDAY, CATEGORY_ANNIVERSARY)
 
+# m30 (v0.34.0): the one length bound on the events surface, and its ONE home —
+# `parser.py` builds the `--short` help text from this constant, so the promise
+# in the help and the rule at the CLI can never drift (the m23 bounds pattern).
+# Measured, not guessed: at the board row's max font size (12, narrow) a label
+# fits the typical row's 81 px budget up to ~11 chars ("GRANDMOTHER" = 79 px);
+# 12 is the first length that already has to shrink, and the bound is set one
+# past the last length that renders at full size. Longer labels are rejected
+# rather than shrunk to illegibility or collided with the days pill.
+MAX_SHORT_LEN = 12
+
 
 def kind(value: object) -> str:
     """JSON-flavoured type name for error messages (null, not NoneType).
@@ -101,70 +82,6 @@ def kind(value: object) -> str:
     in the spelling the user typed it with — one vocabulary, one home.
     """
     return "null" if value is None else type(value).__name__
-
-
-def _as_text(value: object, where: str, path: str) -> str:
-    """Scalar -> str (lossless); null/list/object -> ConfigError (6)."""
-    if isinstance(value, str):
-        return value
-    if isinstance(value, (int, float)):  # bool included: int subclass
-        return str(value)
-    raise ConfigError(f"Events config {path}: {where} must be a string, got {kind(value)}.")
-
-
-def _as_int(value: object, where: str, path: str, bounds: tuple[int, int] | None = None) -> int:
-    """int / integral float / numeric string -> int; anything else -> ConfigError (6).
-
-    m23 (v0.30.0): `bounds=(lo, hi)` rejects out-of-range values at the choke
-    point instead of letting `set_backlight`'s byte assembly guess — 255 went
-    out as MODE_DATA[0] == 255 (outside the firmware's 0..19 mode range), 256
-    wrapped silently to 0 via `& 0xFF`, and brightness/speed/direction were
-    clamped or masked (9 -> 5, 7 -> 3). Present-but-wrong is named, never
-    guessed — the same stance m18/m21 take on wrong-typed values.
-    """
-    num: int | None
-    if isinstance(value, int):  # bool included: True & 0xFF == 1, harmless byte value
-        num = value
-    elif isinstance(value, float) and value.is_integer():
-        num = int(value)
-    elif isinstance(value, str):
-        try:
-            num = int(value.strip())
-        except ValueError:
-            num = None
-    else:
-        num = None
-    if num is None:
-        raise ConfigError(f"Events config {path}: {where} must be an integer, got {kind(value)}.")
-    if bounds is not None and not bounds[0] <= num <= bounds[1]:
-        raise ConfigError(
-            f"Events config {path}: {where} must be in {bounds[0]}..{bounds[1]}, got {num}."
-        )
-    return num
-
-
-def _as_bool(value: object, where: str, path: str) -> bool:
-    """bool / int 0|1 / "true"/"false"/"1"/"0" text -> bool; else ConfigError (6).
-
-    m21 (v0.28.0): a hand-edited `"idle_rainbow": "false"` is a non-empty
-    string — truthy in `set_backlight`'s byte assembly, so rainbow turned ON
-    when the user meant OFF (live-probe proven: MODE_DATA[8] == 1), and `null`
-    silently meant OFF instead of a fix-the-config error. Only the lossless
-    spellings pass (text case/whitespace-insensitive, mirroring `_as_int`'s
-    strip); every other value — `"yes"`, `2`, `1.0`, `null`, list/object —
-    names the field and exits 6, never a silent truthy guess.
-    """
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, int) and value in (0, 1):  # bool already returned
-        return bool(value)
-    if isinstance(value, str):
-        text = value.strip().lower()
-        if text in _TRUE_TEXTS:
-            return True
-        if text in _FALSE_TEXTS:
-            return False
-    raise ConfigError(f"Events config {path}: {where} must be a boolean, got {kind(value)}.")
 
 
 def validate_note(note: str, where: str) -> str:
@@ -222,6 +139,36 @@ def validate_nonblank(value: str, where: str) -> str:
     return stripped
 
 
+def validate_max_len(value: str, where: str, limit: int) -> str:
+    """Bound a CLI string's length (m30, v0.34.0). ConfigError 6.
+
+    Composes with `validate_nonblank` (call it on the stripped text, so the
+    bound applies to what actually gets stored). The rule lives here, in one
+    home, and `parser.py`'s help text is built from `MAX_SHORT_LEN` — the
+    documented limit and the enforced one cannot drift (m23's bounds pattern,
+    applied to length instead of to numbers).
+
+    Why only `--short` is bounded: `--short` is a *label* whose whole job is to
+    be read on a 128x128 screen, and its help already promised "max ~10 chars"
+    while nothing enforced anything (20 chars accepted) — a documented limit
+    with no rule behind it is m29's class. `--note` deliberately gets NO length
+    bound: the board row shows roughly 15 characters of a note at its fixed
+    size 9, so any bound large enough to be usable prose still permits text that
+    truncates, and a bound small enough to guarantee full display (~15 chars)
+    would reject legitimate notes while the loader happily renders them from
+    JSON. Truncation there is now marked with an ellipsis by `screen.fit_text`
+    instead of amputated silently, which is the honest outcome; a hard bound
+    would buy nothing that the mark does not already provide.
+    """
+    if len(value) > limit:
+        raise ConfigError(
+            f"{where} is {len(value)} chars; the limit is {limit}. A longer label "
+            f"cannot be read on the 128x128 screen — shorten it (the full title "
+            f"stays in --title)."
+        )
+    return value
+
+
 def validate_note_category(category: str, note: str | None, origin: str) -> None:
     """Reject a note its category can never render (m29, v0.33.0). ConfigError 6.
 
@@ -251,35 +198,3 @@ def validate_note_category(category: str, note: str | None, origin: str) -> None
             f"(or pass --clear-note to drop a stored note), or use "
             f"--category {CATEGORY_MILESTONE}."
         )
-
-
-def coerce_config_values(cfg: dict, path: str) -> dict:
-    """Coerce event + idle-backlight field values in place; raise ConfigError (6).
-
-    Called by `load_events_config` right after the D22 shape checks, so every
-    consumer (events list, radar/board renders, backlight idle restore) sees
-    the same type-guaranteed dict and the add/remove save paths persist the
-    coerced (valid) form instead of propagating the hand-edited original.
-    """
-    for idx, ev in enumerate(cfg.get("events") or []):
-        for field in _EVENT_TEXT_FIELDS:
-            if field in ev:
-                ev[field] = _as_text(ev[field], f"events[{idx}].{field}", path)
-        if "note" in ev:  # coerced to str just above, safe to parse
-            # m28 (v0.32.0): the stripped form is persisted, so a hand-edited
-            # blank/padded note renders the documented fallback instead of a
-            # blank column — normalization at the choke point, not per consumer.
-            ev["note"] = validate_note(ev["note"], f"Events config {path}: events[{idx}].note")
-    bl = cfg.get("backlight")
-    if isinstance(bl, dict):
-        for field in _IDLE_TEXT_FIELDS:
-            if field in bl:
-                bl[field] = _as_text(bl[field], f"backlight.{field}", path)
-        for field in _IDLE_INT_FIELDS:
-            if field in bl:
-                lo, hi = _IDLE_INT_RANGES[field]
-                bl[field] = _as_int(bl[field], f"backlight.{field}", path, bounds=(lo, hi))
-        for field in _IDLE_BOOL_FIELDS:
-            if field in bl:
-                bl[field] = _as_bool(bl[field], f"backlight.{field}", path)
-    return cfg

@@ -308,7 +308,9 @@ class TestSingleHomeInvariants(unittest.TestCase):
 
     def test_coercion_persists_the_normalized_note(self):
         # the choke point assigns the stripped form (not merely validates it)
-        src = (ROOT / "ak820" / "configvalues.py").read_text(encoding="utf-8")
+        # v0.34.0: the choke-point coercion lives in ak820.coercion (split out of
+        # configvalues along the loader/CLI seam); the lock is the same lock.
+        src = (ROOT / "ak820" / "coercion.py").read_text(encoding="utf-8")
         self.assertIn('ev["note"] = validate_note(', src)
 
     def test_nonblank_rule_shared_by_all_four_entry_points(self):

@@ -36,7 +36,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 import ak820_ctrl
-from ak820 import backlight, cli, configvalues, events
+from ak820 import backlight, cli, coercion, events
 
 
 def _run_main(argv):
@@ -163,15 +163,18 @@ class TestIdleFieldCoverageInvariant(unittest.TestCase):
         src = inspect.getsource(backlight.get_idle_backlight_cfg)
         fields = set(re.findall(r'bl\.get\("(\w+)"', src))
         self.assertTrue(fields)  # the regex must actually match the seam
+        # v0.34.0: the idle-field coercion lists moved with the coercion engine
+        # into ak820.coercion (the loader half of the configvalues contract).
+        # The invariant is unchanged — every bl.get field must be coerced.
         covered = (
-            set(configvalues._IDLE_TEXT_FIELDS)
-            | set(configvalues._IDLE_INT_FIELDS)
-            | set(configvalues._IDLE_BOOL_FIELDS)
+            set(coercion._IDLE_TEXT_FIELDS)
+            | set(coercion._IDLE_INT_FIELDS)
+            | set(coercion._IDLE_BOOL_FIELDS)
         )
         self.assertEqual(fields - covered, set())
 
     def test_bool_list_holds_exactly_idle_rainbow(self):
-        self.assertEqual(configvalues._IDLE_BOOL_FIELDS, ("idle_rainbow",))
+        self.assertEqual(coercion._IDLE_BOOL_FIELDS, ("idle_rainbow",))
 
 
 if __name__ == "__main__":

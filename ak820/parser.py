@@ -13,7 +13,7 @@ Invariant: `cli.build_parser is parser.build_parser` (re-export, not a copy)
 import argparse
 import math
 
-from .configvalues import CATEGORY_MILESTONE, EVENT_CATEGORIES
+from .configvalues import CATEGORY_MILESTONE, EVENT_CATEGORIES, MAX_SHORT_LEN
 from .protocol import MAX_BRIGHTNESS, MAX_DIRECTION, MAX_LIGHT_MODE, MAX_SPEED
 
 
@@ -176,7 +176,10 @@ def build_parser():
     ev_a.add_argument(
         "--short",
         required=True,
-        help="Short label for 128x128 screen (max ~10 chars, non-empty, e.g. DAUGHTER)",
+        # m30 (v0.34.0): the limit in this help text is configvalues.MAX_SHORT_LEN
+        # itself, not a copy of it — the documented promise and the enforced rule
+        # are one value (the m23 bounds pattern, for length instead of numbers).
+        help=f"Short label for 128x128 screen (max {MAX_SHORT_LEN} chars, non-empty, e.g. DAUGHTER)",
     )
     ev_a.add_argument("--date", required=True, help="Date in YYYY-MM-DD or MM-DD format")
     # m29 (v0.33.0): choices come from configvalues.EVENT_CATEGORIES (m23's one-home pattern).

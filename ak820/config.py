@@ -77,6 +77,14 @@ def cmd_events(args):
         # the stripped text, so the canonical id/label normalization is
         # single-home and callers cannot forget to strip.
         short = configvalues.validate_nonblank(args.short, f"--short {args.short!r}")
+        # m30 (v0.34.0): the stripped label is then length-bounded against
+        # MAX_SHORT_LEN (ConfigError 6) — `--short`'s help promised "max ~10
+        # chars" while 20 chars were accepted, and a long label shrinks to
+        # illegibility or collides with the row's days pill. Checked on the
+        # stripped form so padding never buys extra length.
+        short = configvalues.validate_max_len(
+            short, f"--short {short!r}", configvalues.MAX_SHORT_LEN
+        )
         title = configvalues.validate_nonblank(args.title, f"--title {args.title!r}")
         note = getattr(args, "note", None)
         # m29 (v0.33.0): --clear-note is the only way to REMOVE a stored note —

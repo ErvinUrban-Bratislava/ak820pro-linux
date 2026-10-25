@@ -38,7 +38,7 @@ import ak820.palette
 import ak820.telemetry
 import milestone_radar as mr
 import widgets
-from ak820 import cards, cli, errors, events, hud, palette, telemetry
+from ak820 import cards, cli, errors, events, hud, palette, screen, telemetry
 from ak820.errors import AK820Error, ConfigError
 
 FIXTURE_CFG = {
@@ -65,7 +65,12 @@ class TestShimIdentity(unittest.TestCase):
         "render_hero_card": cards,
         "render_board_card": cards,
         "render_custom_card": cards,
-        "_fit_text_font": cards,
+        # v0.34.0 (m30): `_fit_text_font` is GONE, not aliased — a font alone
+        # cannot promise containment, so the shim now re-exports `fit_text`
+        # (font + text) and `ellipsize` from their render_common home.
+        # Superseded deliberately and recorded, never silently rewritten.
+        "fit_text": screen,
+        "ellipsize": screen,
         "_draw_category_icon": cards,
         "THEMES": palette,
         "ConfigError": errors,
@@ -113,7 +118,14 @@ class TestPackageSelfContainment(unittest.TestCase):
 class TestDomainRenderSeparation(unittest.TestCase):
     """PIL-free domain/IO modules vs the pixel modules; one-way data seam."""
 
-    PIL_FREE = ("events.py", "telemetry.py", "palette.py", "errors.py", "state.py")
+    PIL_FREE = (
+        "events.py",
+        "telemetry.py",
+        "palette.py",
+        "errors.py",
+        "state.py",
+        "coercion.py",  # v0.34.0 split: the loader choke point never pulls PIL
+    )
     PIXEL = ("cards.py", "hud.py")
     PIL_IMPORT = re.compile(r"^\s*(from PIL import|import PIL)", re.M)
 
