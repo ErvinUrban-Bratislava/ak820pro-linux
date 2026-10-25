@@ -146,7 +146,9 @@ ak820 events add --title "Ship V2" --short "SHIPV2" --date "2026-12-01" --note "
 # storing a note that could never render. --clear-note removes a stored note:
 ak820 events add --title "Ship V2" --short "SHIPV2" --date "2026-12-01" --clear-note
 
-# Push 2-slide alternating radar (Hero Countdown + 3-Row Family Board)
+# Push the 3-Row Family Board (default --view board: 1 frame, 9 chunks, ~2.2 s)
+ak820 radar
+# Prefer the 2-slide alternating Hero Countdown + Family Board loop (~26.5 s):
 ak820 radar --view cycle --sync-clock
 
 # Push custom AI / reminder sticky-note card (--title/--value/--sub/--footer are
@@ -207,6 +209,71 @@ WantedBy=timers.target
 systemctl --user daemon-reload
 systemctl --user enable --now ak820-radar.timer
 ```
+
+---
+
+## Screen Navigation & Troubleshooting
+
+### Switching between the stock screen and your custom screen (`Fn + Del`)
+
+The keyboard has **two independent screens worth of content** and one hardware
+shortcut to jump between them:
+
+| Screen | What it shows | How to get it |
+|:---|:---|:---|
+| **Stock factory time screen** | The firmware's built-in clock/date widget | On power-up, and after every `ak820 sync-clock` |
+| **Custom SPI flash screen** | Whatever you last uploaded: custom GIF (`upload`), milestone radar (`radar`), HUD (`hud`), or card (`card`) | Press **`Fn + Del`** on the physical keyboard |
+
+**`Fn + Del` toggles between them.** Uploaded content is written to the keyboard's
+SPI flash and stays there across reboots and unplugging — it is never lost, only
+de-selected. The one thing that reliably sends the panel back to the stock time
+screen is a clock write: **`ak820 sync-clock` (and `radar --sync-clock`) makes the
+firmware return to the stock time screen.** Nothing is broken and nothing needs
+re-uploading — press **`Fn + Del`** and the custom screen comes straight back.
+
+If `Fn + Del` appears to do nothing, the custom screen is simply empty (nothing
+uploaded yet in this SPI flash slot): run `ak820 radar` or `ak820 hud` first.
+
+### Upload speed: single-frame views vs animated GIFs
+
+Screen uploads go over the keyboard's vendor HID pipe in 4096-byte chunks, each
+one ACKed by the MCU, so transfer time is proportional to payload size:
+
+| Payload | Frames | Chunks | Bytes | Wall clock |
+|:---|:---|:---|:---|:---|
+| Single frame — `radar --view board` (default), `--view hero`, `hud`, `media`, `card` | 1 | **9** | 36 KB | **~2.2 s** |
+| Animated GIF / 34-frame `radar --view cycle` | 34 | **273** | 1.11 MB | **~26.5 s** |
+
+That is why `radar` defaults to `--view board`: the same three countdown rows,
+uploaded roughly twelve times faster. Choose `--view cycle` or `upload <gif>`
+when you actually want motion, and keep `--view board` for the timer-driven
+systemd path (`systemd/ak820-radar.timer`) so a frequent refresh never blocks the
+USB pipe for half a minute. Preview any payload's true size without touching USB:
+
+```bash
+ak820 --dry-run radar                    # -> 1 frame(s), 9 chunk(s)
+ak820 --dry-run radar --view cycle       # -> 34 frame(s), 273 chunk(s)
+```
+
+### Screen stuck on `LOADING... xx%`
+
+An upload that dies **mid-stream** — the process was killed, the USB cable
+yanked, or a chunk ACK timed out — leaves the panel sitting on its
+`LOADING... xx%` dialog, because the firmware only leaves that dialog when it
+receives the closing **SAVE** command after a complete transfer.
+
+**Fix: finish a clean transfer.**
+
+```bash
+ak820 radar --view board --force
+```
+
+This immediately clears the dialog: it streams a complete, small 9-chunk payload
+and sends the closing SAVE, so the panel commits the new frame and returns to
+normal rendering. `--force` is included because the interrupted attempt may have
+left a state record that would otherwise make an identical payload look like a
+no-op. If the device itself has gone unresponsive, unplug/replug the cable (the
+screen upload requires wired USB) and re-run the same command.
 
 ---
 

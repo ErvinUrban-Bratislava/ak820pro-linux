@@ -94,8 +94,8 @@ def build_parser():
     p.add_argument(
         "--view",
         choices=["cycle", "hero", "board", "hybrid"],
-        default="cycle",
-        help="cycle=Hero+Board loop (default), hero=closest event only, board=3-row list, hybrid=Bongo Cat+Radar",
+        default="board",
+        help="board=3-row list (default, fast 2s upload), hero=closest event only, cycle=Hero+Board loop, hybrid=Bongo Cat+Radar",
     )
     p.add_argument(
         "--seconds",
