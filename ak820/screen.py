@@ -93,28 +93,28 @@ def _load_font(paths, size: int):
 ELLIPSIS = "…"
 
 # m31 (v0.35.0): a single-line box must stay single-line. m30 gave `fit_text`
-# horizontal containment but measured width across the whole string without
-# asking how many lines it draws. PIL breaks on `\n`, so one embedded newline
-# splits a fitted line in two; a *centred* box then centres on the total height
-# and the custom card's value drew its first line ten px ABOVE the panel top
-# (live-measured), while top-anchored boxes (board meta, hero subtitle) spilled
-# below their border — silent, exit 0, the m30 class one axis deeper. The fix is
-# at the single home of containment so every caller inherits it: line-breakers
-# (every boundary `str.splitlines()` knows) flatten to a space before measuring.
-# Newline-free text is returned byte-for-byte identical, so no prior render moves.
+# horizontal containment but never asked how many lines a string draws: PIL
+# breaks on `\n`, so one embedded newline split a fitted line in two and a
+# *centred* box drew its first line above the panel (live-measured). The fix
+# is at the single home of containment: every boundary `str.splitlines()`
+# knows flattens to a space before measuring. m34 (v0.40.0): the vocabulary
+# widened to ALL control characters (Cc) — a TAB advances to a position-
+# dependent stop and no control character has a predictable advance. Text
+# free of control characters is returned byte-for-byte identical.
 _LINE_BREAK_RE = re.compile("[\\n\\r\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029]+")
 _WS_RUN_RE = re.compile(r"\s+")
+_CONTROL_RE = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+")  # Cc + Zl/Zp
 
 
 def flatten_lines(text: str) -> str:
-    """Collapse line-breaking characters to single spaces (m31, v0.35.0).
+    """Collapse control characters (breaks, TAB) to single spaces (m31, m34).
 
-    Returns `text` unchanged when it holds no line break, so the fix is a strict
-    no-op for every string that already rendered on one line.
+    Returns `text` unchanged when it holds no control character, so the fix is
+    a strict no-op for every string that already rendered on one line.
     """
-    if not text or not _LINE_BREAK_RE.search(text):
+    if not text or not _CONTROL_RE.search(text):
         return text
-    return _WS_RUN_RE.sub(" ", _LINE_BREAK_RE.sub(" ", text)).strip()
+    return _WS_RUN_RE.sub(" ", _CONTROL_RE.sub(" ", text)).strip()
 
 
 def text_width(draw, text: str, font) -> float:

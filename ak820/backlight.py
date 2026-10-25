@@ -8,7 +8,7 @@ idle-preset persistence since the v0.25.0 split.
 import sys
 import time
 
-from . import events, textwidth
+from . import events, tables
 from .errors import ConfigError
 from .presets import SHOWCASE_PRESETS  # re-export identity (v0.27.0 §10 data split)
 from .protocol import CMD_DELAY, LIGHT_MODES, _cmd_packet, parse_hex_color, parse_mode
@@ -129,16 +129,11 @@ def apply_idle_backlight(dev, config_path: str | None = None):
 
 
 def list_backlight_presets():
-    print(f"{'PRESET KEY':<18} {'NAME':<20} {'MODE':<6} {'COLOR':<10} {'DESCRIPTION'}")
-    print("-" * 80)
-    for p in SHOWCASE_PRESETS:
-        # m33 (v0.39.0): the same print-seam rule as `events list` — pad to
-        # DISPLAY width, never char count. The catalog data is ASCII today;
-        # the rule is what is locked, not today's data.
-        print(
-            f"{textwidth.pad(p['key'], 18)} {textwidth.pad(p['name'], 20)} "
-            f"{textwidth.pad(str(p['mode']), 6)} {textwidth.pad(p['color'], 10)} {p['desc']}"
-        )
+    # m33 (v0.39.0): pad to DISPLAY width, never char count. m34 (v0.40.0):
+    # the geometry has ONE home in `tables.format_preset_table` (pure — the
+    # catalog data is never touched, only displayed).
+    for line in tables.format_preset_table(SHOWCASE_PRESETS):
+        print(line)
     print("\nSupported mode names:", ", ".join(LIGHT_MODES.keys()))
 
 

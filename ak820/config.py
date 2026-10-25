@@ -8,7 +8,7 @@ import datetime
 import json
 import os
 
-from . import configvalues, events, textwidth
+from . import configvalues, events, tables
 from .errors import ConfigError, InvalidFileError
 
 
@@ -61,18 +61,13 @@ def cmd_events(args):
                 u["next_date"] = u["next_date"].isoformat()
             print(json.dumps(upcoming, indent=2))
         else:
-            print(f"{'EVENT':<22} {'NEXT DATE':<12} {'LEFT':<8} {'MILESTONE':<12} {'URGENCY'}")
-            print("-" * 68)
-            for u in upcoming:
-                # m32 (v0.37.0): a break in hand-edited text is flattened at the
-                # print seam only. m33 (v0.39.0): columns pad to DISPLAY width
-                # (CJK = 2 cells), never char count — `--json` and stored bytes
-                # stay raw (the m27/m28 boundary).
-                title = textwidth.pad(configvalues.flatten_for_display(u["title"]), 22)
-                milestone = textwidth.pad(configvalues.flatten_for_display(u["milestone_str"]), 12)
-                next_col = textwidth.pad(str(u["next_date"]), 12)
-                left_col = textwidth.pad(f"{u['days_left']}d", 8)
-                print(f"{title} {next_col} {left_col} {milestone} {u['theme_key']}")
+            # m32/m33 (v0.37/v0.39): hand-edited breaks flatten and columns pad
+            # to DISPLAY width at the print seam only. m34 (v0.40.0): the whole
+            # table — geometry, flatten, pad, rule — has ONE home in
+            # `tables.format_events_table`; the JSON branch above stays raw
+            # (the m27/m28 boundary), and a pure formatter cannot touch data.
+            for line in tables.format_events_table(upcoming):
+                print(line)
         return 0
     elif action == "add":
         events.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date

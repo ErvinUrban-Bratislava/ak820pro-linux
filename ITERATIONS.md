@@ -44,6 +44,7 @@
 | `v0.37.0` | 2026-10-25 | Done | m32 closed (row added retroactively in v0.38.0 — the v0.37.0 iteration updated the queue but not this table): media-header tags `▶ PLAYING`/`⏸ PAUSED` rendered TOFU on the production font (no catalog font carries `⏸` at all — the fact that decided the fix); tags became catalog-universal ASCII `PLAYING`/`PAUSED`/`MEDIA`; the drift lock is STATIC (every drawn literal ASCII except a probed allow-list `…`/`•`/`°`, AST-extracted from all renderers) so a tofu literal can never be added; minors: `card --save-preview` (same validation seam as live), `events list` flattens multi-line notes at the PRINT seam only (`configvalues.flatten_for_display`, PIL-free twin table-locked), `--force` help one-home | `python3 -m unittest` 726/726 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.38.0` | 2026-10-25 | Done | The glyph audit's three remaining edges closed: the last-resort `load_default` fallback is a typed `FontMissingError` (exit 10) instead of a silent tofu degrade (measured: that face renders `•` as `.notdef`) — the allow-list promise now covers every font `_load_font` can return; locale-dependent `%b` drawn text replaced by the fixed C-locale month table in new PIL-free leaf `ak820/dates.py` (one home — cards may not import events, events stay PIL-free — `%b` AST-banned from shipped literals); user text (MPRIS/notes) DECIDED pass-through, no render-seam substitution — the `.notdef` box IS the mark, boundary locked behaviorally | `python3 -m unittest` 750/750 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.39.0` | 2026-10-25 | Done | The print seam's own m31b closed: `events list`/`backlight list` pad every dynamic column by DISPLAY width via new stdlib-only leaf `ak820/textwidth.py` (east_asian_width W/F = 2 cells — char-count padding shifted every following column of a CJK row, live-reproved; `--json` and stored bytes keep raw codepoints); numeric-strftime exemption class documented in `dates.py` + both sites and pinned by a directive allow-list; `ak820-smartd` DECIDED to stay OUT of the repo (personal-data coupling), boundary documented in README | `python3 -m unittest` 781/781 + `scripts/lint.sh` GREEN + live device-free probes (CJK table aligned, presets table byte-stable) |
+| `v0.40.0` | 2026-10-25 | Done | The print seam's last unaligned input closed (m34): TAB is rejected at the CLI and flattened at the display seam — the vocabulary widened from line breaks to ALL control characters (`[\x00-\x1f\x7f-\x9f\u2028\u2029]`: a tab advances to a position-dependent tab stop and every control char has a terminal-defined advance, live-reproved `A\tB`/`A\x01B` shifting every following cell), the m31b+m32 dual structure kept (CLI 6 / permissive loader), twins locked equal; table geometry single-homed in new `ak820/tables.py` (pure formatters: width constants are the one home, the header and every pad name them, the rule is derived from the header via new `textwidth.rule` — 65/69 cells replacing the undriven `"-" * 68`/`"-" * 80`; `--json` cannot reach flattening/padding by construction) | `python3 -m unittest` 810/810 + `scripts/lint.sh` GREEN (ruff+mypy) + live device-free probes (tab/CJK rows aligned, `--json` raw, presets byte-stable, zero USB, smartd active) |
 
 ---
 
@@ -876,7 +877,7 @@
     undriven by them) — queued below as v0.40.0.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
 
-- [ ] **`v0.40.0`** — the print seam's last unaligned input: TAB. `\t` is not
+- [x] **`v0.40.0`** — the print seam's last unaligned input: TAB. `\t` is not
     a line break, so `validate_single_line` accepts it in `--short`/`--title`/
     `--note`, and `display_width` cannot align it — a tab advances to the next
     tab stop, which depends on where the row already is (live-reproved: title
@@ -890,4 +891,44 @@
     events, `"-" * 80` backlight) are not derived from them; single-home the
     widths as constants and derive the rule length from them (m23's one-home
     pattern applied to table geometry).
+  - CLOSED (v0.40.0): DECIDED both halves, exactly the m31b+m32 dual structure
+    — the trust boundary forces it (the CLI cannot govern hand-edited configs,
+    the display seam cannot retroactively reject stored data). The rule closed
+    the CLASS, not the instance: every Unicode Cc control character has a
+    terminal-defined, unpredictable advance (`display_width` counts `\t`/`\x01`
+    as one cell; terminals advance 0-to-8 cells), so the vocabulary is
+    `[\x00-\x1f\x7f-\x9f\u2028\u2029]` (Cc plus the Zl/Zp pair the break set
+    already carried — dropping them from the union was a live-caught regression
+    of v0.35's unicode-separator flattening). Break check first (message
+    discrimination), control check names TAB + fix; twins locked equal
+    (pattern + search battery + flatten parity). Geometry: new `ak820/tables.py`
+    — pure formatters own both tables (config/backlight delegate), every width
+    is a constant named by the header and its pad call, the rule is
+    `textwidth.rule(header)` (65/69 cells, replacing the undriven 68/80 —
+    intentional visible change: the rule now matches its header); AST locks —
+    pad widths are Names never literals, no `"-" * N` BinOp, per-formatter pad
+    counts, one assignment per constant. Found while probing: ZWJ emoji
+    sequences misalign (live-measured: `Family 👨‍👩‍👧 Reunion` counts 21 cells,
+    terminals render the joined sequence as ~17) — queued as v0.41.0.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+
+- [ ] **`v0.41.0`** — the width rule's last misalignment class: GRAPHEME
+    CLUSTERS. `display_width` counts codepoints, but a terminal collapses
+    ZWJ-joined emoji sequences (and variation selectors / skin-tone modifiers
+    merge into their base glyph) into ONE cell-run — live-measured: title
+    `Family 👨‍👩‍👧 Reunion` pads as 21 cells while the joined family glyph renders
+    as ~17, so every following cell of that row shifts LEFT (the mirror of
+    m33's CJK shift). Decide: document + pin the boundary as accepted (the
+    ambiguous=1 precedent — stdlib `unicodedata` has no grapheme-cluster API,
+    and no shipped string depends on the difference), or implement a
+    deterministic cluster heuristic in `textwidth.py` (a U+200D-joined run
+    counts as its first cluster's width; `FE0F`/`FE0E` and `1F3FB..1F3FF`
+    ride the base cell) and lock it against hand-computed cell counts. Either
+    way: the screen side is unaffected (it measures real pixels via
+    `textbbox`), the data layer keeps raw codepoints (m27/m28), and the choice
+    is recorded at the seam. While there (found during v0.40.0 probes): the
+    trailing URGENCY/DESCRIPTION columns are unpadded and unbounded —
+    theme keys and preset descriptions are fixed vocabularies, bounded by
+    construction; document that exemption class next to the numeric-strftime
+    one (v0.39 pattern) so a future audit does not re-open it.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

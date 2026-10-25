@@ -423,6 +423,15 @@ class TestFlattenTwinEquivalence(unittest.TestCase):
         "a\x85b",
         "a\u2028b",
         "a\u2029b",
+        # m34 (v0.40.0): the vocabulary is ALL control characters now \u2014 a TAB
+        # is not a break but no width rule can align it (tab stops are
+        # position-dependent), so the whole Cc class flattens at both homes.
+        "a\tb",
+        "a\x01b",
+        "a\x7fb",
+        "a\x80b",
+        "a\t \tb",
+        "\t",
         "line one\n\nline two",
         "  padded\nvalue  ",
         "multi \n spaces",
@@ -441,6 +450,8 @@ class TestFlattenTwinEquivalence(unittest.TestCase):
 
     def test_regexes_are_still_one_pattern(self):
         self.assertEqual(configvalues._LINE_BREAK_RE.pattern, screen._LINE_BREAK_RE.pattern)
+        # m34 (v0.40.0): the widened vocabulary is one rule in two homes too.
+        self.assertEqual(configvalues._CONTROL_RE.pattern, screen._CONTROL_RE.pattern)
 
     def test_newline_free_text_is_byte_identical(self):
         for text in ("DAUGHTER", "Turns 5", "Oct 01 • Turns 5", ""):
@@ -655,12 +666,18 @@ class TestSourceInvariants(unittest.TestCase):
         self.assertEqual(renderers_src.count("validate_single_line"), 4)
 
     def test_events_list_flattens_at_the_print_seam_only(self):
-        src = (ROOT / "ak820" / "config.py").read_text(encoding="utf-8")
-        self.assertIn("configvalues.flatten_for_display(u[\"title\"])", src)
-        self.assertIn("configvalues.flatten_for_display(u[\"milestone_str\"])", src)
+        # m34 (v0.40.0): the print seam moved to `tables.format_events_table` —
+        # a PURE formatter, so flattening is structurally unreachable from the
+        # JSON branch, which now owns `config.py` alone.
+        src = (ROOT / "ak820" / "tables.py").read_text(encoding="utf-8")
+        self.assertIn('configvalues.flatten_for_display(u["title"])', src)
+        self.assertIn('configvalues.flatten_for_display(u["milestone_str"])', src)
         # the JSON branch is untouched: display flattening must not reach the data
-        json_branch = src.split('if getattr(args, "json", False):')[1].split("else:")[0]
+        cfg_src = (ROOT / "ak820" / "config.py").read_text(encoding="utf-8")
+        json_branch = cfg_src.split('if getattr(args, "json", False):')[1].split("else:")[0]
         self.assertNotIn("flatten_for_display", json_branch)
+        # one seam only: config.py no longer flattens anything by hand
+        self.assertNotIn("flatten_for_display", cfg_src)
 
     def test_configvalues_stays_pil_free(self):
         """The twin exists BECAUSE this module may never import PIL (`events add`

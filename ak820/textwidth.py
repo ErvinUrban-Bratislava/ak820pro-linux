@@ -59,3 +59,14 @@ def pad(text: str, width: int) -> str:
     """
     shortfall = width - display_width(text)
     return text + " " * shortfall if shortfall > 0 else text
+
+
+def rule(text: str, char: str = "-") -> str:
+    """A separator rule exactly as wide as `text` occupies on screen (m34).
+
+    Table rules used to be magic numbers nothing derived them from —
+    `"-" * 68` under a 65-cell header, `"-" * 80` under a 69-cell one. The
+    rule is a consequence of the table geometry, so it is computed from the
+    header it sits under, never copied as a second number that can drift.
+    """
+    return char * display_width(text)

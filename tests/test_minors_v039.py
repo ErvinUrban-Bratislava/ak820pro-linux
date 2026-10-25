@@ -304,9 +304,11 @@ class TestSourceInvariants(unittest.TestCase):
     """Anti-recurrence: the print seams pad by width, from one home, forever."""
 
     def test_no_char_count_padding_of_dynamic_values_in_print_seams(self):
-        # Every `:<N` format spec in the two table modules must format a
-        # string CONSTANT (the header rows); dynamic columns go through pad.
-        for rel in ("ak820/config.py", "ak820/backlight.py"):
+        # Every `:<N` format spec in the table modules must format a string
+        # CONSTANT (the header rows); dynamic columns go through pad. m34
+        # (v0.40.0): the tables moved to `ak820/tables.py` — the lock follows
+        # the seam and keeps watching the delegating modules too.
+        for rel in ("ak820/tables.py", "ak820/config.py", "ak820/backlight.py"):
             tree = ast.parse((ROOT / rel).read_text(encoding="utf-8"))
             for node in ast.walk(tree):
                 if isinstance(node, ast.FormattedValue) and node.format_spec:
@@ -320,22 +322,37 @@ class TestSourceInvariants(unittest.TestCase):
                             self.assertIsInstance(node.value, ast.Constant)
 
     def test_ljust_is_banned_in_the_print_seams(self):
-        for rel in ("ak820/config.py", "ak820/backlight.py"):
+        for rel in ("ak820/tables.py", "ak820/config.py", "ak820/backlight.py"):
             src = (ROOT / rel).read_text(encoding="utf-8")
             self.assertNotIn(".ljust(", src, rel)
 
     def test_both_tables_route_every_dynamic_column_through_pad(self):
-        cfg_src = (ROOT / "ak820" / "config.py").read_text(encoding="utf-8")
-        bl_src = (ROOT / "ak820" / "backlight.py").read_text(encoding="utf-8")
-        self.assertEqual(cfg_src.count("textwidth.pad("), 4)  # title/date/left/milestone
-        self.assertEqual(bl_src.count("textwidth.pad("), 4)  # key/name/mode/color
+        # m34 (v0.40.0): both tables live in `ak820/tables.py` now; the count
+        # is pinned PER FORMATTER — 4 header pads + 4 dynamic columns each,
+        # so a column can never silently stop being padded.
+        tree = ast.parse((ROOT / "ak820" / "tables.py").read_text(encoding="utf-8"))
+        counts = {
+            node.name: sum(
+                1
+                for call in ast.walk(node)
+                if isinstance(call, ast.Call)
+                and isinstance(call.func, ast.Attribute)
+                and call.func.attr == "pad"
+            )
+            for node in tree.body
+            if isinstance(node, ast.FunctionDef)
+        }
+        self.assertEqual(counts["format_events_table"], 8)  # header + title/date/left/milestone
+        self.assertEqual(counts["format_preset_table"], 8)  # header + key/name/mode/color
 
     def test_textwidth_is_a_stdlib_leaf(self):
         imported = _imports_of("ak820/textwidth.py")
         self.assertEqual(imported, {"unicodedata"})
 
     def test_print_seams_import_textwidth_at_module_level(self):
-        for rel in ("ak820/config.py", "ak820/backlight.py"):
+        # m34 (v0.40.0): the print seam is `tables.py` now — config/backlight
+        # delegate to it, so the leaf import lives there.
+        for rel in ("ak820/tables.py",):
             src = (ROOT / rel).read_text(encoding="utf-8")
             self.assertIsNotNone(
                 re.search(r"^from \. import .*\btextwidth\b", src, re.M),
@@ -343,16 +360,21 @@ class TestSourceInvariants(unittest.TestCase):
             )
 
     def test_module_budgets_hold(self):
-        for rel in ("ak820/textwidth.py", "ak820/config.py", "ak820/backlight.py"):
+        for rel in (
+            "ak820/textwidth.py",
+            "ak820/tables.py",
+            "ak820/config.py",
+            "ak820/backlight.py",
+        ):
             n = len((ROOT / rel).read_text(encoding="utf-8").splitlines())
             self.assertLess(n, 300, f"{rel} is {n} lines")
 
     def test_textwidth_is_pil_free_and_import_cycle_free(self):
-        # Fresh interpreter: importing the leaf and both consumers must work
+        # Fresh interpreter: importing the leaf and every consumer must work
         # with nothing else of the package preloaded.
         code = (
             f"import sys; sys.path.insert(0, {str(ROOT)!r}); "
-            "import ak820.textwidth, ak820.config, ak820.backlight; print('ok')"
+            "import ak820.textwidth, ak820.tables, ak820.config, ak820.backlight; print('ok')"
         )
         done = subprocess.run(
             [sys.executable, "-c", code], capture_output=True, text=True, timeout=60

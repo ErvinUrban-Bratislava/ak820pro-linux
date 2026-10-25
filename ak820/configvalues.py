@@ -44,15 +44,18 @@ Rules:
   single value. `--note` is deliberately NOT length-bounded — see
   `validate_max_len`'s reason: the renderer now marks truncation instead of
   hiding it, and any usable bound would still permit text that truncates.
-* `validate_single_line` (m31b, v0.36.0) rejects a line break in text that
-  renders on ONE line (`events add --short`/`--title`/`--note`, `card
+* `validate_single_line` (m31b, v0.36.0) rejects text that cannot render on
+  ONE line (`events add --short`/`--title`/`--note`, `card
   --title`/`--value`/`--sub`/`--footer`). v0.35.0 made every renderer CONTAIN a
   break by flattening it, but containment is degradation — the reader never
   learns the text lost its shape. The creation path refuses what the renderer
   can only degrade (the m18/m27/m29 stance); the loader stays permissive.
-* `flatten_for_display` (m32, v0.37.0) is that rule's display half: a break a
-  hand-edited config already holds keeps its stored bytes and is flattened only
-  on the way to the one-line `events list` table.
+  m34 (v0.40.0) widened the vocabulary from line breaks to every control
+  character: a TAB is not a break, yet no width rule can align it (tab stops
+  are position-dependent), so it joins the refused vocabulary at the CLI.
+* `flatten_for_display` (m32, v0.37.0) is that rule's display half: control
+  characters a hand-edited config already holds keep their stored bytes and
+  are flattened only on the way to the one-line `events list` table.
 """
 
 import re
@@ -160,10 +163,19 @@ _LINE_BREAK_RE = re.compile("[\\n\\r\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029]+")
 # same collapse step its render-side twin does, so the two flatteners stay one
 # rule rather than two dialects.
 _WS_RUN_RE = re.compile(r"\s+")
+# m34 (v0.40.0): the vocabulary widened from line breaks to ALL control
+# characters (Cc = C0 + C1; U+2028/U+2029 join as Zl/Zp the break set already
+# carried). A TAB is not a break — `validate_single_line` accepted it — yet no
+# width rule can align it: a tab advances to the next tab stop, which depends
+# on where the row already is (live-reproved: `A\tB` shifted every following
+# cell). The rest of Cc is the same class — every control character has a
+# terminal-defined, unpredictable advance — so the rule closes the class.
+# Twin of `screen._CONTROL_RE`.
+_CONTROL_RE = re.compile("[\\x00-\\x1f\\x7f-\\x9f\\u2028\\u2029]+")
 
 
 def validate_single_line(value: str, where: str) -> str:
-    """Reject text that contains a line break (m31b, v0.36.0). ConfigError 6.
+    """Reject text that cannot render on one line (m31b; m34 widened it). ConfigError 6.
 
     Every field this guards renders on a single line — the 128x128 screen's
     one-line boxes and the `events list` table alike. Since v0.35.0 the
@@ -174,10 +186,16 @@ def validate_single_line(value: str, where: str) -> str:
     `validate_nonblank` (call it on the stripped text). The value is returned
     unchanged — unlike blank/placeholder text there is nothing to normalize.
 
+    m34 (v0.40.0): the vocabulary is every control character, not just line
+    breaks — a TAB pasted from a spreadsheet sails past the break rule and
+    misaligns the whole row (live-reproved). The break check runs FIRST so a
+    string holding both names the more fundamental problem (v0.36's ordering
+    note); the control check then catches TAB and the rest of Cc.
+
     Trust boundary (m27/m28/m29, table-locked): the loader stays permissive —
-    a hand-edited `note`/`short_title` containing `\\n` still loads and
-    renders, contained by `screen.flatten_lines`, because rejecting data the
-    user already wrote would brick whole configs. Only the creation path
+    a hand-edited `note`/`short_title` containing `\\n` or `\\t` still loads
+    and renders, contained by `screen.flatten_lines`, because rejecting data
+    the user already wrote would brick whole configs. Only the creation path
     refuses; a note a re-add PRESERVES from such a config is not re-judged
     here either (it is hand-edited data arriving through the permissive door).
     """
@@ -186,28 +204,36 @@ def validate_single_line(value: str, where: str) -> str:
             f"{where} contains a line break; this field renders on a single "
             f"line. Replace the break with a space."
         )
+    if _CONTROL_RE.search(value):
+        raise ConfigError(
+            f"{where} contains a TAB or other control character; a tab "
+            f"advances to a position-dependent tab stop, so no column can "
+            f"stay aligned. This field renders on a single line — replace "
+            f"the control character with a space."
+        )
     return value
 
 
 def flatten_for_display(value: str) -> str:
-    """Collapse line breaks to spaces for a ONE-LINE display surface (m32, v0.37.0).
+    """Collapse control characters (breaks, TAB) for a ONE-LINE display surface (m32, m34).
 
     This is the DISPLAY half of the single-line rule, and it is deliberately not
-    `validate_single_line`: the CLI still refuses a break in text it is about to
-    CREATE, while a hand-edited config that already holds one keeps loading and
-    keeps its stored bytes (the m27/m28/m29/m31b trust boundary). `events list`
-    prints through this so such a note cannot break the table's row structure —
-    ragged rows are the print-seam equivalent of the render overflow m31 closed.
+    `validate_single_line`: the CLI still refuses such text in what it is about
+    to CREATE, while a hand-edited config that already holds it keeps loading
+    and keeps its stored bytes (the m27/m28/m29/m31b trust boundary). `events
+    list` prints through this so a stored break cannot break the table's row
+    structure and a stored TAB cannot misalign it — ragged rows are the
+    print-seam equivalent of the render overflow m31 closed.
 
-    The PIL-free twin of `screen.flatten_lines` (same `_LINE_BREAK_RE` vocabulary
+    The PIL-free twin of `screen.flatten_lines` (same `_CONTROL_RE` vocabulary
     as `validate_single_line`, same collapse-and-strip shape): `events list` must
     never import PIL, so the rule has two homes locked equal by the equivalence
     table in tests/test_minors_v037.py. Only the printed copy is flattened —
     `events list --json` keeps the raw stored value, because that output is data.
     """
-    if not value or not _LINE_BREAK_RE.search(value):
+    if not value or not _CONTROL_RE.search(value):
         return value
-    return _WS_RUN_RE.sub(" ", _LINE_BREAK_RE.sub(" ", value)).strip()
+    return _WS_RUN_RE.sub(" ", _CONTROL_RE.sub(" ", value)).strip()
 
 
 def validate_max_len(value: str, where: str, limit: int) -> str:

@@ -119,8 +119,14 @@ class TestFlattenLines(unittest.TestCase):
         self.assertEqual(flatten_lines("a\x85b"), "a b")
 
     def test_newline_free_text_is_returned_identically(self):
-        """The byte-identical guarantee: no break -> the very same string."""
-        for src in ["Turns 5", "Dec 01 • Turns 5", "  keep  spacing  ", "a\tb"]:
+        """The byte-identical guarantee: no control char -> the very same string.
+
+        v0.40.0 supersession: `"a\\tb"` used to sit in this list — m34 widened
+        the flatten vocabulary to ALL control characters (a TAB misaligns a
+        row, tab stops being position-dependent), so the guarantee narrowed
+        from newline-free to control-free. See tests/test_minors_v040.py.
+        """
+        for src in ["Turns 5", "Dec 01 • Turns 5", "  keep  spacing  "]:
             with self.subTest(src=src):
                 out = flatten_lines(src)
                 self.assertEqual(out, src)

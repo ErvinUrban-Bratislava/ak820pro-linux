@@ -414,7 +414,10 @@ class TestValidateSingleLine(unittest.TestCase):
                     configvalues.validate_single_line(f"a{ch}b", "--note 'x'")
 
     def test_newline_free_text_passes_unchanged(self):
-        for value in ["Turns 5", "27 DAYS", "", "a\tb", "a b", "  "]:
+        # v0.40.0 supersession: "a\tb" used to pass — m34 widened the single-line
+        # vocabulary to ALL control characters (a TAB cannot be aligned on a
+        # line), so it now joins the rejected set; see tests/test_minors_v040.py.
+        for value in ["Turns 5", "27 DAYS", "", "a b", "  "]:
             with self.subTest(value=value):
                 out = configvalues.validate_single_line(value, "--x")
                 self.assertIs(out, value)  # nothing to normalize — same object
