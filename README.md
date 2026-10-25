@@ -294,7 +294,7 @@ Since v0.9.0 the implementation lives in the `ak820/` package (every module < 30
 | `ak820/errors.py` | Error taxonomy + exit-code contract above |
 | `ak820/events.py` | Events-config domain: path resolution, date validation, shape checks, countdown rows (PIL-free) |
 | `ak820/dates.py` | Locale-independent calendar text: the fixed C-locale month table behind every drawn date label (PIL-free leaf) |
-| `ak820/textwidth.py` | Terminal display width at the print seam: CJK-aware column padding for `events list` / `backlight list` (stdlib leaf) |
+| `ak820/textwidth.py` | Terminal display width at the print seam: cluster-aware column padding for `events list` / `backlight list` — CJK counts 2 cells, ZWJ emoji sequences count as one glyph (stdlib leaf) |
 | `ak820/configvalues.py` | Field-value coercion at the `load_events_config` choke point (m18/m21) |
 | `ak820/parser.py` | The argparse surface: what the CLI accepts, nothing else |
 | `ak820/cli.py` | Offline-first routing, `--dry-run`, discovery, exit-code `main()` |

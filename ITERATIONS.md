@@ -44,6 +44,7 @@
 | `v0.37.0` | 2026-10-25 | Done | m32 closed (row added retroactively in v0.38.0 — the v0.37.0 iteration updated the queue but not this table): media-header tags `▶ PLAYING`/`⏸ PAUSED` rendered TOFU on the production font (no catalog font carries `⏸` at all — the fact that decided the fix); tags became catalog-universal ASCII `PLAYING`/`PAUSED`/`MEDIA`; the drift lock is STATIC (every drawn literal ASCII except a probed allow-list `…`/`•`/`°`, AST-extracted from all renderers) so a tofu literal can never be added; minors: `card --save-preview` (same validation seam as live), `events list` flattens multi-line notes at the PRINT seam only (`configvalues.flatten_for_display`, PIL-free twin table-locked), `--force` help one-home | `python3 -m unittest` 726/726 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.38.0` | 2026-10-25 | Done | The glyph audit's three remaining edges closed: the last-resort `load_default` fallback is a typed `FontMissingError` (exit 10) instead of a silent tofu degrade (measured: that face renders `•` as `.notdef`) — the allow-list promise now covers every font `_load_font` can return; locale-dependent `%b` drawn text replaced by the fixed C-locale month table in new PIL-free leaf `ak820/dates.py` (one home — cards may not import events, events stay PIL-free — `%b` AST-banned from shipped literals); user text (MPRIS/notes) DECIDED pass-through, no render-seam substitution — the `.notdef` box IS the mark, boundary locked behaviorally | `python3 -m unittest` 750/750 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.39.0` | 2026-10-25 | Done | The print seam's own m31b closed: `events list`/`backlight list` pad every dynamic column by DISPLAY width via new stdlib-only leaf `ak820/textwidth.py` (east_asian_width W/F = 2 cells — char-count padding shifted every following column of a CJK row, live-reproved; `--json` and stored bytes keep raw codepoints); numeric-strftime exemption class documented in `dates.py` + both sites and pinned by a directive allow-list; `ak820-smartd` DECIDED to stay OUT of the repo (personal-data coupling), boundary documented in README | `python3 -m unittest` 781/781 + `scripts/lint.sh` GREEN + live device-free probes (CJK table aligned, presets table byte-stable) |
+| `v0.42.0` | 2026-10-25 | Done | The width rule's last misalignment class closed (m36): `display_width` now counts CLUSTERS, not codepoints — a U+200D-joined run holding an emoji is ONE glyph (its widest member), while marks, variation selectors (`FE00..FE0F`) and skin-tone modifiers (`1F3FB..1F3FF`) ride the base cell (listed explicitly, never inferred from the interpreter's Unicode table); an all-narrow run SUMS, which is what keeps v0.39's `a\u200db` = 2 pin alive. Live-reproved: `Family 👨\u200d👩\u200d👧 Reunion` measured 21 cells, renders 17. Two false starts corrected empirically before shipping: an RI pair needs NO cluster rule (each is Neutral → the pair already measured a flag's 2 cells; collapsing it would have broken it), and a joiner binds nothing across whitespace (the flatten seam creates `👨\u200d 👩` = 4 vs the true 5). Residuals (VS16 promotion, keycaps, stray ZWJ, font-less terminals) documented AND pinned as decided behavior; trailing-column exemption class documented at its home + both row sites and pinned three ways (ASCII/bounded vocabularies, closed producer chain, vacuity-proven AST lock) | `python3 -m unittest` 853/853 + `scripts/lint.sh` GREEN (ruff+mypy) + live device-free probes (emoji/CJK/ASCII rows all start NEXT DATE at cell 23, preset table byte-stable, zero USB touched) |
 | `v0.41.0` | 2026-10-25 | Done | CI self-heal (m35): `backlight list` required the device it merely describes — the v0.40 device-free test passed locally ONLY because hardware was plugged in; hardware-less CI (all four Pythons) died with exit 3. Routed offline in `_dispatch` before the --dry-run block (m22's probe precedent: an informational command that sends zero USB bytes must not require the device it describes; its output IS the result, not a payload preview), superseding v0.29's "nothing to preview" pin for `list` (moved to `backlight set --preset`); class lock — an AST scan forces every device-bound CLI call in the shipped suite to mock the device in its enclosing function (offline argv skipped, argparse-rejection site exempt by name, lock vacuity-proven) | `python3 -m unittest` 818/818 + `scripts/lint.sh` GREEN (ruff+mypy) + device-free probes (list prints with discovery raising, dry-run table, `set` keeps the line, zero USB, smartd active) |
 | `v0.40.0` | 2026-10-25 | Done | The print seam's last unaligned input closed (m34): TAB is rejected at the CLI and flattened at the display seam — the vocabulary widened from line breaks to ALL control characters (`[\x00-\x1f\x7f-\x9f\u2028\u2029]`: a tab advances to a position-dependent tab stop and every control char has a terminal-defined advance, live-reproved `A\tB`/`A\x01B` shifting every following cell), the m31b+m32 dual structure kept (CLI 6 / permissive loader), twins locked equal; table geometry single-homed in new `ak820/tables.py` (pure formatters: width constants are the one home, the header and every pad name them, the rule is derived from the header via new `textwidth.rule` — 65/69 cells replacing the undriven `"-" * 68`/`"-" * 80`; `--json` cannot reach flattening/padding by construction) | `python3 -m unittest` 810/810 + `scripts/lint.sh` GREEN (ruff+mypy) + live device-free probes (tab/CJK rows aligned, `--json` raw, presets byte-stable, zero USB, smartd active) |
 
@@ -909,7 +910,7 @@
     intentional visible change: the rule now matches its header); AST locks —
     pad widths are Names never literals, no `"-" * N` BinOp, per-formatter pad
     counts, one assignment per constant. Found while probing: ZWJ emoji
-    sequences misalign (live-measured: `Family 👨‍👩‍👧 Reunion` counts 21 cells,
+    sequences misalign (live-measured: `Family 👨\u200d👩\u200d👧 Reunion` counts 21 cells,
     terminals render the joined sequence as ~17) — queued as v0.41.0.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
 
@@ -937,12 +938,12 @@
     tests/test_minors_v041.py (8 tests, zero hardware).
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
 
-- [ ] **`v0.42.0`** — (displaced from v0.41.0 by the CI self-heal trigger)
+- [x] **`v0.42.0`** — (displaced from v0.41.0 by the CI self-heal trigger)
     the width rule's last misalignment class: GRAPHEME
     CLUSTERS. `display_width` counts codepoints, but a terminal collapses
     ZWJ-joined emoji sequences (and variation selectors / skin-tone modifiers
     merge into their base glyph) into ONE cell-run — live-measured: title
-    `Family 👨‍👩‍👧 Reunion` pads as 21 cells while the joined family glyph renders
+    `Family 👨\u200d👩\u200d👧 Reunion` pads as 21 cells while the joined family glyph renders
     as ~17, so every following cell of that row shifts LEFT (the mirror of
     m33's CJK shift). Decide: document + pin the boundary as accepted (the
     ambiguous=1 precedent — stdlib `unicodedata` has no grapheme-cluster API,
@@ -957,4 +958,63 @@
     theme keys and preset descriptions are fixed vocabularies, bounded by
     construction; document that exemption class next to the numeric-strftime
     one (v0.39 pattern) so a future audit does not re-open it.
+  - CLOSED (v0.42.0, m36): DECIDED to IMPLEMENT the heuristic, not pin the
+    boundary — the codepoint count is the same proxy class m33 rejected for the
+    screen, and relocating a known misalignment to another surface has never
+    been this project's answer. `textwidth.py` now scans CLUSTERS (a base plus
+    the codepoints that ride its cell: `Mn`/`Me` marks, `FE00..FE0F` selectors,
+    `1F3FB..1F3FF` skin tones — listed explicitly so the rule cannot drift with
+    the Unicode table an interpreter ships, v0.38's "an accident is never a
+    promise") and collapses a U+200D-joined run containing an emoji to its
+    WIDEST member; an all-narrow run sums, which is exactly what keeps v0.39's
+    `a\u200db` = 2 pin alive (no ligature exists for two letters).
+    Two false starts corrected EMPIRICALLY before shipping, both recorded at the
+    seam because both are counter-intuitive: (a) a regional-indicator PAIR needs
+    no rule — each RI is Neutral (1 cell) and a flag glyph is 2, so the old
+    per-codepoint rule was already right and collapsing the pair would have
+    BROKEN it (measured 1 cell); (b) a joiner binds nothing across whitespace —
+    the flatten seam CREATES `👨\u200d 👩` when a hand-edited config breaks a joined run
+    mid-sequence, and a space is its own cell (measured 4 vs the true 5, shifting
+    the row LEFT; live-probed through the CLI with a hand-edited config).
+    Residuals DECIDED + documented + pinned as behavior (the ambiguous=1 stance):
+    VS16 emoji-presentation promotion (`©\ufe0f`/`1\ufe0f\u20e3` may render 2), a stray ZWJ
+    between text and emoji, and font-less terminals — all terminal/font settings,
+    never data bugs. Screen side untouched (measures pixels via `textbbox`, now
+    locked), `--json`/stored bytes keep raw codepoints (m27/m28, locked).
+    Carried item CLOSED too: the trailing-column exemption class is documented in
+    `tables.py` at its home AND both row sites, and pinned three ways — THEMES
+    keys and preset descs asserted ASCII + bounded, the producer's closed
+    if/elif chain asserted to assign only THEMES members, and an AST lock that
+    reads each row's trailing segment (raw vs `pad(...)`) and is proven
+    non-vacuous on a synthetic padded source.
+    tests/test_minors_v042.py (35 offline tests, zero hardware: the rule against
+    hand-computed cells for families/skin tones/selectors/heart-on-fire/flags/
+    compound sequences, the v0.39 battery re-run unchanged to prove the scanner
+    is a strict extension, whitespace-join boundary incl. the flatten-created
+    case, exact expected emoji row + every column at its header cell, `--json`
+    and stored bytes raw, vocabulary-identity locks, one-assignment-per-constant,
+    screen-side boundary, AST lock + vacuity proof).
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+
+- [ ] **`v0.43.0`** — the single-line vocabulary's remaining class: BIDI
+    FORMAT CHARACTERS (found while probing v0.42.0). Live-reproved:
+    `configvalues.validate_single_line` ACCEPTS `Trip\u202eHome` (U+202E
+    RIGHT-TO-LEFT OVERRIDE) with exit 0 and `display_width` counts it as 9
+    cells — the WIDTH is right, the ORDER is not: a terminal runs the Unicode
+    bidi algorithm and renders the rest of the line reversed, scrambling that
+    row and everything after it in the table. No width rule can fix order, so
+    the fix is rejection at the creation seam, exactly the m34 TAB structure.
+    v0.40's vocabulary is category Cc (`[\x00-\x1f\x7f-\x9f\u2028\u2029]`) and
+    these are Cf — the class was always "characters with terminal-defined,
+    unpredictable rendering inside a single-line field", never "Cc".
+    Decide the vocabulary (at minimum U+061C ALM, U+202A..U+202E LRE/RLE/LRO/
+    RLO/RLE-overrides, U+2066..U+2069 isolates; weigh the whole Cf set against
+    the joiners this iteration just made meaningful) and keep the m31b+m32 dual
+    structure: the CLI refuses what it is about to CREATE, the display seam
+    strips/flattens what a hand-edited config already holds (retroactive strictness
+    bricks whole configs — the loader stays permissive, m27/m28/m29 boundary).
+    Twins locked equal three ways as v0.40 locked the Cc twins. Screen side:
+    PIL draws in logical order with no bidi shaping, so the 128x128 board is
+    unaffected — VERIFY that with a real render and record the finding at the
+    seam rather than assuming it.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

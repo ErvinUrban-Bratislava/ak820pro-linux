@@ -17,22 +17,44 @@ analogue of `screen.py` for the 128x128 surface. The formatters are PURE
 flattening or padding by construction: stored bytes and JSON keep raw
 codepoints (the m27/m28 boundary), and only the printed copy is display-shaped.
 
+Trailing-column exemption class (documented v0.42.0 so a later audit does not
+re-open it): URGENCY and DESCRIPTION are the last column of their table, are
+never padded, and are unbounded in length by the format. They need no width rule
+for two independent reasons, and both are structural:
+
+* Nothing follows them. A column can only misalign the columns after it, and
+  there are none — the ragged edge is the right edge of the line.
+* Their vocabulary is fixed shipped text, not user input. `theme_key` is one of
+  the five urgency keys `events.compute_upcoming_events` picks from a closed
+  if/elif chain (every one a member of `palette.THEMES`), and `desc` is a
+  literal in `presets.SHOWCASE_PRESETS`. Both are ASCII today, so none of the
+  wide or joined codepoints the width rule exists to measure can appear in them.
+
+The exemption is therefore a decision, not an oversight, and it is pinned by
+tests/test_minors_v042.py: both vocabularies are asserted ASCII and bounded,
+and the AST lock proves each row's trailing segment is emitted raw. If a future
+change ever routes user text into a trailing column, those locks fail ON
+PURPOSE and the exemption has to be re-opened deliberately — the same
+arrangement v0.39 reached for the numeric-strftime sites.
+
 Dependency: `tables -> {configvalues, textwidth}`, both stdlib-only leaves.
 Never PIL, never a device module — the print seam stays CI-testable (§10.5).
 """
 
 from . import configvalues, textwidth
 
-# The events table geometry — ONE home each (m34). The trailing URGENCY column
-# is unbounded (theme keys are the fixed THEMES vocabulary) and never padded.
+# The events table geometry — ONE home each (m34). URGENCY is exempt from
+# padding (trailing-column exemption class, module docstring): theme keys are
+# the fixed THEMES vocabulary and no column follows it.
 EVENT_COL_W = 22
 DATE_COL_W = 12
 LEFT_COL_W = 8
 MILESTONE_COL_W = 12
 URGENCY_HEADER = "URGENCY"
 
-# The backlight preset table geometry — ONE home each (m34). The trailing
-# DESCRIPTION column is catalog-fixed text and never padded.
+# The backlight preset table geometry — ONE home each (m34). DESCRIPTION is
+# exempt from padding (trailing-column exemption class, module docstring):
+# catalog-fixed text, and no column follows it.
 PRESET_KEY_W = 18
 PRESET_NAME_W = 20
 MODE_COL_W = 6
@@ -60,6 +82,8 @@ def format_events_table(upcoming: list[dict]) -> list[str]:
         milestone = textwidth.pad(
             configvalues.flatten_for_display(u["milestone_str"]), MILESTONE_COL_W
         )
+        # theme_key is emitted raw: trailing-column exemption (fixed vocabulary,
+        # nothing follows it) — see the module docstring.
         lines.append(f"{title} {next_col} {left_col} {milestone} {u['theme_key']}")
     return lines
 
@@ -76,6 +100,8 @@ def format_preset_table(presets: list[dict]) -> list[str]:
     )
     lines = [header, textwidth.rule(header)]
     for p in presets:
+        # desc is emitted raw: trailing-column exemption (catalog-fixed text,
+        # nothing follows it) — see the module docstring.
         lines.append(
             f"{textwidth.pad(p['key'], PRESET_KEY_W)} {textwidth.pad(p['name'], PRESET_NAME_W)} "
             f"{textwidth.pad(str(p['mode']), MODE_COL_W)} {textwidth.pad(p['color'], COLOR_COL_W)} "
