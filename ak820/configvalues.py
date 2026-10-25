@@ -16,7 +16,10 @@ Contract (mirrors D22's taxonomy at the same single choke point):
 * `null`, lists and objects have no lossless scalar form -> ConfigError (6),
   the fix-the-config class, naming the offending `events[i].field` location.
 * `note` may only interpolate `{years}` — any other placeholder (or unbalanced
-  braces) is a ConfigError at load, never a KeyError at render time.
+  braces) is a ConfigError at load, never a KeyError at render time. m28
+  (v0.32.0): `validate_note` also strips incidental surrounding whitespace and
+  returns the normalized text, so a hand-edited blank note (`"   "`) becomes
+  the documented empty-note fallback ("Milestone") instead of rendering blank.
 * `idle_rainbow` is the one bool-valued field (m21, v0.28.0): bools pass
   through, `0`/`1` ints and `"true"/"false"/"1"/"0"` text coerce losslessly,
   everything else — `"yes"`, `2`, `null` — is ConfigError (6), never a truthy
@@ -26,10 +29,12 @@ Contract (mirrors D22's taxonomy at the same single choke point):
   and direction 0..3 (mirror the argparse choices). A hand-edited 255 used to
   reach the wire as byte 255 and 256 wrapped silently to 0 via `& 0xFF`.
 * `validate_nonblank` (m27, v0.31.0) is the CLI-side half of the same
-  fix-the-config contract: `events add --short`/`--title` and the `events
-  remove` target must not be empty or whitespace-only (ConfigError 6, the D4
-  precedent). The loader stays permissive for hand-edited data by decision —
-  the CLI can never CREATE a blank-field entry.
+  fix-the-config contract: `events add --short`/`--title`/`--note` and the
+  `events remove` target must not be empty or whitespace-only (ConfigError 6,
+  the D4 precedent). The loader stays permissive for hand-edited data by
+  decision — the CLI can never CREATE a blank-field entry, and rejecting data
+  the user already wrote would turn every command into exit 6 (see
+  `validate_nonblank`'s trust-boundary note and REVIEW.md §28).
 
 `load_events_config` is the only caller of the coercion above; consumers that
 inject hand-built dicts directly (unit-test seams) bypass this and keep their
@@ -139,21 +144,33 @@ def _as_bool(value: object, where: str, path: str) -> bool:
     raise ConfigError(f"Events config {path}: {where} must be a boolean, got {kind(value)}.")
 
 
-def validate_note(note: str, where: str) -> None:
-    """Only {years} may be interpolated (compute_upcoming_events' format call).
+def validate_note(note: str, where: str) -> str:
+    """Only {years} may be interpolated; returns the note stripped (m28).
 
     Public seam (v0.27.0): the single home of the `{years}`-only rule, shared
     by the load-time coercion below and `events add --note` CLI validation,
     so the two entry points can never drift. `where` is the full location
     phrase in the message (e.g. "events[0].note" or "--note").
+
+    m28 (v0.32.0): returns the stripped text — the `validate_nonblank` pattern,
+    so normalization is single-home and no caller can forget to strip.
+    Surrounding whitespace is incidental (m27's class: nothing meaningful
+    should be sensitive to it), and a hand-edited `"note": "   "` used to
+    survive verbatim and render an EMPTY milestone column — `note_tpl or
+    "Milestone"` is truthy for spaces. Stripped to `""` it now takes the
+    documented empty-note fallback and renders "Milestone". Internal
+    whitespace and the `{years}` placeholder are untouched; only the
+    incidental edges go.
     """
+    stripped = note.strip()
     try:
-        parsed = list(string.Formatter().parse(note))
+        parsed = list(string.Formatter().parse(stripped))
     except ValueError as exc:  # unbalanced / lone brace
         raise ConfigError(f"{where} has malformed braces: {exc}") from exc
     for _, field, _, _ in parsed:
         if field not in (None, "years"):
             raise ConfigError(f"{where} uses {{{field}}}; only {{years}} is supported.")
+    return stripped
 
 
 def validate_nonblank(value: str, where: str) -> str:
@@ -195,7 +212,10 @@ def coerce_config_values(cfg: dict, path: str) -> dict:
             if field in ev:
                 ev[field] = _as_text(ev[field], f"events[{idx}].{field}", path)
         if "note" in ev:  # coerced to str just above, safe to parse
-            validate_note(ev["note"], f"Events config {path}: events[{idx}].note")
+            # m28 (v0.32.0): the stripped form is persisted, so a hand-edited
+            # blank/padded note renders the documented fallback instead of a
+            # blank column — normalization at the choke point, not per consumer.
+            ev["note"] = validate_note(ev["note"], f"Events config {path}: events[{idx}].note")
     bl = cfg.get("backlight")
     if isinstance(bl, dict):
         for field in _IDLE_TEXT_FIELDS:

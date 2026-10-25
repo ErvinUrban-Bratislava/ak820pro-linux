@@ -80,10 +80,16 @@ def cmd_events(args):
         title = configvalues.validate_nonblank(args.title, f"--title {args.title!r}")
         note = getattr(args, "note", None)
         if note is not None:
-            # v0.27.0: --note obeys the same {years}-only rule as the config
-            # loader (configvalues.validate_note is the single home) — a bad
-            # placeholder is ConfigError (6) at the CLI, never a render KeyError.
-            configvalues.validate_note(note, f"--note {note!r}")
+            # m28 (v0.32.0): a whitespace-only --note was stored verbatim and
+            # rendered an empty MILESTONE column (live-proven: `'   '` persisted,
+            # blank cell listed). The same non-blank rule as --short/--title/
+            # remove-target rejects it here (one home, ConfigError 6) — treating
+            # blank as absent would guess at the user's intent and still leave
+            # no way to clear a note. validate_note then enforces the
+            # {years}-only rule (v0.27.0, never a render KeyError) and returns
+            # the stripped text, so incidental padding never reaches the config.
+            note = configvalues.validate_nonblank(note, f"--note {note!r}")
+            note = configvalues.validate_note(note, f"--note {note!r}")
         ev_id = short.lower().replace(" ", "-")
         old_events = cfg.get("events", [])
         prior = next((e for e in old_events if _same_event(e, ev_id, title)), None)

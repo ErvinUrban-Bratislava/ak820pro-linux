@@ -35,6 +35,7 @@
 | `v0.28.0` | 2026-10-25 | Done | m21 closed — `idle_rainbow` bool coercion at the `configvalues` choke point: new `_as_bool` + `_IDLE_BOOL_FIELDS` (bools pass; `0`/`1` ints and `"true"/"false"/"1"/"0"` text case/whitespace-insensitive coerce losslessly; `"yes"`, `2`, `-1`, `1.0`, `null`, list/object → `ConfigError` 6 naming `backlight.idle_rainbow` — same taxonomy as m18); the m21 repro `"false"` now writes rainbow byte 0 (was 1); anti-recurrence invariant locks every `get_idle_backlight_cfg` `bl.get` field into a coercion list; README exit-6 row synced | `python3 -m unittest` 469/469 + `scripts/lint.sh` GREEN + live real-hardware probes (`"false"` → 0/coerced, `"yes"` → 6 both seams) |
 | `v0.30.0` | 2026-10-25 | Done | Carried §25 minors: m23 idle int bounds at the `configvalues` choke point (bounds in `protocol.py` feed loader AND parser choices — one home; `_IDLE_INT_FIELDS` derived from `_IDLE_INT_RANGES` so an unbounded idle int field is unrepresentable; out-of-range -> ConfigError 6 naming field + range) + m24 one case-insensitive id-or-title identity rule (`_same_event`) shared by add + remove + m25 re-add preserves unknown hand-added fields (`dict(prior)` rebuild, `--note` wins, m20 no-op extends) + m26 `non_negative_float` rejects negative `--seconds`/`--watch`/`--dwell` at parse time (usage 2) | `python3 -m unittest` 519/519 + `scripts/lint.sh` GREEN + live real-hardware exit-6/exit-2/CRUD probes |
 | `v0.31.0` | 2026-10-25 | Done | m27 closed — blank `--short`/`--title`/remove-target rejected at the CLI: new public `configvalues.validate_nonblank` (ConfigError 6, D4 precedent) is the single home of the non-blank rule shared by `events add` flags and the `events remove` target; returns the stripped text so padded values store the canonical id/label (`" DAUGHTER "` -> `daughter`/`DAUGHTER`, never `-daughter-`) and remove stays symmetric (m24's class); DECIDED: `--title` gets the same guard, loader stays permissive for hand-edited data (trust boundary test-locked); `_same_event` empty-needle semantics table-locked; README exit-6 row synced | `python3 -m unittest` 539/539 + `scripts/lint.sh` GREEN + live shim probes (repro forms -> 6, padded round-trip canonical) |
+| `v0.32.0` | 2026-10-25 | Done | m28 closed — whitespace-only `--note` no longer stored verbatim (it rendered an EMPTY milestone column: `note_tpl or "Milestone"` is truthy for spaces): CLI rejects blank `--note` through the existing `validate_nonblank` (one rule, four entry points — `--short " "` and `--note " "` now fail identically), DECIDED against "treat as absent" because it guesses at intent and still cannot clear a note; `validate_note` now returns the stripped text and the coercion persists it, so hand-edited `"note": "   "` normalizes at the choke point to the documented `""` fallback; trust boundary revisited and KEPT CLI-only with the decisive reason recorded (`"note": ""` is a legal working spelling — load-time rejection bricks whole configs), identity fields deliberately not stripped at load; asymmetry test-locked as a table | `python3 -m unittest` 567/567 + `scripts/lint.sh` GREEN + live **real-hardware** probes (repro -> 6, padded stored `{years} yrs`, hand-edited blank -> `Milestone`, `status idle --config` -> 0) |
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
 
 ---
@@ -521,7 +522,7 @@
     exited 0, padded round-trip canonical, blank remove target -> 6),
     version 0.31.0. Found while probing: m28 queued below.
 
-- [ ] **`v0.32.0`** — m28 (found during the v0.31.0 probes): `events add
+- [x] **`v0.32.0`** — m28 (found during the v0.31.0 probes): `events add
     --note "   "` stores the whitespace verbatim — `validate_note` passes
     it (no placeholders to reject), so the entry persists a blank note
     (live-proven: stored `'   '`). Decide: reject blank as ConfigError 6
@@ -531,4 +532,54 @@
     `load_events_config` reject blank `id`/`title`/`short_title` in
     hand-edited configs, or keep the CLI-only boundary (currently
     test-locked)?
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - Closed in v0.32.0: DECIDED reject at the CLI (not "treat as absent") —
+    `--note` now goes through `validate_nonblank` like `--short`/`--title`/
+    remove-target (one rule, four entry points, ConfigError 6); treating blank
+    as absent was rejected because it *guesses* at intent and buys nothing —
+    absent preserves the prior note, so it would not even clear one. The blank
+    was not inert: `note_tpl or "Milestone"` is truthy for spaces, so the
+    documented fallback never fired and the MILESTONE column rendered empty
+    (live-proven on both the CLI and a hand-edited config). Second half:
+    `validate_note` now RETURNS the stripped text (the `validate_nonblank`
+    pattern — normalization single-home, callers cannot forget to strip) and
+    `coerce_config_values` persists it, so hand-edited `"   "` becomes the
+    documented `""` fallback at the choke point rather than per consumer.
+    Trust-boundary revisit DECIDED with the decisive reason recorded: the
+    CLI-only rejection stays, because `"note": ""` is a legal *working*
+    hand-edited spelling — rejecting blanks at load bricks whole configs
+    (every command, including the ones needed to inspect the file, would exit 6
+    over one field); m18 rejects wrong-*typed* values because they are
+    unusable, a blank string is usable-but-degraded. Identity fields are
+    deliberately NOT stripped at load (would silently change matching semantics
+    of user-written data); the creation path normalizes. Asymmetry locked as a
+    table (CLI 6 / loader 0). README exit-6 row + Testing count synced,
+    parser `--note` help documents non-empty, REVIEW.md §28.
+    `tests/test_minors_v032.py` (28 offline tests, zero hardware: blank-form
+    table naming the flag, repro argv -> 6 with bytes+mtime stable, no
+    traceback, blank re-add leaves prior note byte-identical, placeholder rule
+    fires after the strip, storage/render locks compared against the row's own
+    `years` so nothing is date-dependent, loader fallback + m18 regression,
+    trust-boundary + source invariants that the CLI never strips a note itself);
+    v0.27.0's `test_empty_note_allowed` superseded -> `test_empty_note_rejected`.
+    Suite 539 -> 567 + `scripts/lint.sh` GREEN + live **real-hardware** probes
+    (repro -> 6 where an exit-0 blank store was, padded note stored
+    `{years} yrs`, hand-edited `"   "` listed `Milestone`, padded re-add ->
+    "already up to date", `status idle --config` -> 0 with idle coercion intact,
+    version 0.32.0). Found while probing: m29 queued below.
+
+- [ ] **`v0.33.0`** — m29 (found during the v0.32.0 probes): `--note` is
+    silently inert for `--category birthday|anniversary` — live-proven:
+    `events add --category birthday --note "ignored {years}"` exited 0, stored
+    `note: 'ignored {years}'`, and `events list` rendered `Turns 1` (the note
+    is consulted only in the milestone branch of `compute_upcoming_events`).
+    A flag that is accepted, persisted, and never rendered is a silent no-op.
+    Decide: warn on stderr (keep the write — the category may change later) vs
+    reject as ConfigError 6 vs document in `--note` help; whichever is chosen,
+    lock the category/note interaction table (3 categories x note present) so
+    the render semantics are explicit. While there, close the related gap the
+    m28 decision exposed: no CLI path clears an existing note (omitting `--note`
+    preserves it, blank is now rejected), so JSON hand-editing is the only way —
+    decide `--clear-note` vs `--note -` sentinel and keep the non-blank rule
+    intact.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

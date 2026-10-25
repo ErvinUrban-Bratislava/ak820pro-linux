@@ -1826,3 +1826,82 @@ degenerate stores), `remove "  "` -> 6, padded add stored
 Found while probing: whitespace-only `--note` is still stored verbatim
 (`validate_note` passes `"   "` — no placeholders to reject) -> queued for
 v0.32.0 as m28.
+
+---
+
+## 28. m28 — Whitespace-Only `--note` Stored Verbatim; Note Trust Boundary Revisited (v0.32.0, 2026-10-25)
+
+Reproduced live against v0.31.0 before fixing (pre-fix evidence: `events add
+--note "   "` exited **0** and persisted `note: '   '`; `events list` then
+rendered an EMPTY MILESTONE column, and a hand-edited `"note": "   "` rendered
+blank identically). The blank was not inert — `compute_upcoming_events` resolves
+the milestone text as `note_tpl.format(...) if "{years}" in note_tpl else
+(note_tpl or "Milestone")`, and `"   "` is truthy, so the documented empty-note
+fallback never fired and the screen column went empty.
+
+**m28 — `validate_note` guarded placeholders but not emptiness.** It passed
+`"   "` (nothing to interpolate), so the CLI stored it and the loader coerced it
+through untouched. Closed by extending the two homes that already exist rather
+than adding a third:
+
+* **CLI — blank is rejected** through the existing `validate_nonblank` (one
+  rule, one home, the m27 precedent): `--short " "` and `--note " "` now fail
+  with the same friendly exit 6. The alternative — treat blank as absent — was
+  rejected deliberately: it *guesses* at the user's intent (the stance every
+  m18/m21/m23/m26/m27 fix takes against guessing), and it buys nothing, since
+  "absent" preserves the prior note and would still leave no way to clear one.
+* **Loader — whitespace is normalized, not rejected.** `validate_note` now
+  *returns* the stripped text (the `validate_nonblank` pattern: normalization
+  stays single-home and no caller can forget it) and `coerce_config_values`
+  persists that form. A hand-edited `"   "` becomes `""` — the documented
+  explicit-fallback spelling — so the fix lands at the choke point, not per
+  consumer. Internal whitespace and `{years}` are untouched; only the
+  incidental edges go.
+
+**DECIDED (the §27 revisit) — the CLI-only rejection boundary stands, now with
+the decisive reason stated.** `"note": ""` is a *legal, working* hand-edited
+spelling (it renders "Milestone"), so a load-time blank rejection would brick
+otherwise-fine configs: every command — `list`, radar, idle restore, and the
+very ones needed to inspect the file — would exit 6 because of one field. m18
+rejects wrong-*typed* values because they are structurally unusable (they crash
+every consumer); a blank string is usable-but-degraded, and since m27 the CLI
+can no longer create such entries. Identity fields (`id`/`title`/`short_title`)
+are deliberately **not** stripped at load either: stripping would silently
+change the matching semantics of data the user wrote (remove-by-title would
+newly match padded titles) — a behavior change, not a fix. The creation path
+normalizes instead. Both halves are test-locked, including the asymmetry itself
+as a table (CLI 6 / loader 0) so the boundary cannot drift.
+
+### 28.1 Verification
+
+`tests/test_minors_v032.py` (28 offline tests, zero hardware): table-driven
+exit-6 for six blank spellings naming `--note`; the exact live repro argv now
+exits 6 with config bytes + mtime stable and no traceback; blank re-add leaves a
+prior note byte-identical; placeholder rule still fires *after* the strip
+(`"  {place}  "` → 6) so both note rules coexist; storage locks (padded →
+stripped, internal spacing preserved, padded re-add is an m20 no-op with stable
+mtime, render compared against the row's own `years` so no test is
+date-dependent); loader locks (hand-edited `"   "` → "Milestone", padded note
+stripped in coercion, `"note": ""` still a legal fallback, bad placeholder
+still 6 naming `events[0].note`, absent note stays absent); trust-boundary locks
+(CLI-rejects/loader-accepts table, blank identity fields still load, identity
+fields provably *not* stripped, boundary documented); anti-recurrence source
+invariants (`config.py` never strips a note itself, all four entry points bind
+`validate_nonblank`'s returned text, the coercion *assigns* the normalized
+note); parser surface (`--note` help documents non-empty).
+`test_device_config_parity_v027.py::test_empty_note_allowed` became
+`test_empty_note_rejected` — the v0.27.0 tolerance is superseded, recorded as a
+supersession rather than silently rewritten.
+Suite: 539 -> 567 tests, all green (5 numpy-optional skips);
+`scripts/lint.sh` GREEN (ruff check + format + mypy). Live probes on **real
+hardware**: repro argv `--note "   "` -> 6 friendly (was an exit-0 blank store),
+padded note stored `{years} yrs`, hand-edited `"   "` listed `Milestone` where
+the column was blank, padded re-add -> "already up to date", `status idle
+--config` -> 0 with the idle coercion path intact (m21/m23 fields unaffected),
+`--dry-run probe` sends zero USB, version 0.32.0.
+
+Found while probing: `--note` is silently inert for
+`--category birthday|anniversary` — `--category birthday --note "ignored
+{years}"` stored the note and rendered `Turns 1` (the note is only consulted
+for milestones) -> queued for v0.33.0 as m29, together with the related gap
+that no CLI path clears an existing note.

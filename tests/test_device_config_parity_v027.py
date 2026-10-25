@@ -313,10 +313,21 @@ class TestEventsAddNote(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("old 0", out)  # "old {years}" formatted with years=0
 
-    def test_empty_note_allowed(self):
-        rc, _, _ = self._add("--note", "")
-        self.assertEqual(rc, 0)
-        self.assertEqual(self._entry()["note"], "")
+    def test_empty_note_rejected(self):
+        # SUPERSEDED in v0.32.0 (m28): an empty/whitespace --note used to be
+        # stored verbatim and rendered an empty milestone column. The m27
+        # non-blank rule now covers --note too, so the flag is either a real
+        # note or a friendly exit 6 — omit it to keep the existing note.
+        # The LOADER still accepts "note": "" (explicit "Milestone" fallback);
+        # the strictness lives on the creation path only (trust boundary).
+        with self.assertRaises(SystemExit) as ctx:
+            with contextlib.redirect_stderr(io.StringIO()) as err:
+                cli.main(
+                    ["events", "add", "--config", self.cfg, "--title", "X", "--short", "X",
+                     "--date", "12-25", "--note", ""]
+                )
+        self.assertEqual(ctx.exception.code, 6)
+        self.assertIn("--note", err.getvalue())
 
     def test_add_note_to_fresh_config(self):
         path = os.path.join(self.tmp, "fresh.json")

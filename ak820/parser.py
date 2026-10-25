@@ -186,8 +186,9 @@ def build_parser():
     ev_a.add_argument(
         "--note",
         default=None,
-        help="Note template; only {years} may be interpolated (e.g. 'Shipped {years} yrs "
-        "after V1'). Omit to keep an existing entry's note when re-adding.",
+        help="Note template, non-empty (e.g. 'Shipped {years} yrs after V1'); only "
+        "{years} may be interpolated. Omit to keep an existing entry's note when "
+        "re-adding.",
     )
     ev_r = ev.add_parser("remove", help="Remove a milestone by id or title")
     ev_r.add_argument("target", help="Event id or title to remove")
