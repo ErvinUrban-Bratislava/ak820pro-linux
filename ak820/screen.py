@@ -19,6 +19,7 @@ Both paths are byte-identical to the reference loop (tests/test_rgb565_numpy_v02
 
 import functools
 import os
+import re
 import struct
 
 from PIL import Image, ImageFont, ImageOps
@@ -86,6 +87,30 @@ def _load_font(paths, size: int):
 # single character, so the mark costs less width than "..." at every size.
 ELLIPSIS = "…"
 
+# m31 (v0.35.0): a single-line box must stay single-line. m30 gave `fit_text`
+# horizontal containment but measured width across the whole string without
+# asking how many lines it draws. PIL breaks on `\n`, so one embedded newline
+# splits a fitted line in two; a *centred* box then centres on the total height
+# and the custom card's value drew its first line ten px ABOVE the panel top
+# (live-measured), while top-anchored boxes (board meta, hero subtitle) spilled
+# below their border — silent, exit 0, the m30 class one axis deeper. The fix is
+# at the single home of containment so every caller inherits it: line-breakers
+# (every boundary `str.splitlines()` knows) flatten to a space before measuring.
+# Newline-free text is returned byte-for-byte identical, so no prior render moves.
+_LINE_BREAK_RE = re.compile("[\\n\\r\\v\\f\\x1c\\x1d\\x1e\\x85\\u2028\\u2029]+")
+_WS_RUN_RE = re.compile(r"\s+")
+
+
+def flatten_lines(text: str) -> str:
+    """Collapse line-breaking characters to single spaces (m31, v0.35.0).
+
+    Returns `text` unchanged when it holds no line break, so the fix is a strict
+    no-op for every string that already rendered on one line.
+    """
+    if not text or not _LINE_BREAK_RE.search(text):
+        return text
+    return _WS_RUN_RE.sub(" ", _LINE_BREAK_RE.sub(" ", text)).strip()
+
 
 def text_width(draw, text: str, font) -> float:
     """Drawn width of `text` in pixels (bbox, matching every renderer's own math).
@@ -112,7 +137,11 @@ def ellipsize(draw, text: str, font, max_width: float) -> str:
     Text that already fits comes back unchanged (byte-for-byte identical renders
     for every string that always fitted). Binary search on the joined candidate,
     so the cost is O(log n) measurements even for a pathological note.
+
+    m31 (v0.35.0): the text is flattened to a single line first, so a box that
+    fits one line can never be handed a two-line string by this primitive either.
     """
+    text = flatten_lines(text)
     if not text or text_width(draw, text, font) <= max_width:
         return text
     if text_width(draw, ELLIPSIS, font) > max_width:
@@ -144,7 +173,14 @@ def fit_text(draw, text: str, paths: list[str], max_size: int, min_size: int, ma
     Strings that fit at some size in [min_size, max_size] are returned verbatim
     with the same font the old helper picked, so existing renders stay
     byte-identical; only text that used to be clipped changes.
+
+    m31 (v0.35.0): containment is on BOTH axes. The text is flattened to a single
+    line first (see `flatten_lines`), so a single-line box can never be handed a
+    multi-line string that escapes it vertically — the custom card's centred value
+    drew its first line ten px above the panel before this. Newline-free text is
+    untouched, so the byte-identical guarantee above still holds.
     """
+    text = flatten_lines(text)
     for sz in range(max_size, min_size - 1, -1):
         font = _load_font(paths, sz)
         if text_width(draw, text, font) <= max_width:
