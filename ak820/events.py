@@ -16,7 +16,7 @@ import json
 import os
 import tempfile
 
-from . import coercion, configvalues
+from . import coercion, configvalues, dates
 from .errors import ConfigError
 
 
@@ -259,7 +259,10 @@ def compute_upcoming_events(cfg: dict, today: datetime.date | None = None) -> li
                 "short_title": ev.get("short_title", ev.get("title", "EVENT").upper()[:11]),
                 "orig_date": raw_date,
                 "next_date": next_date,
-                "date_label": next_date.strftime("%b %d"),
+                # v0.38.0 glyph audit: C-locale month table, not strftime —
+                # `%b` follows LC_TIME and can draw codepoints no catalog
+                # font was ever locked against (see ak820/dates.py).
+                "date_label": dates.format_date_label(next_date),
                 "days_left": days_left,
                 "years": years,
                 "category": category,

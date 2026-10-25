@@ -474,6 +474,34 @@ class TestOneHomeInvariants(unittest.TestCase):
                 names.update(t.id for t in node.targets if isinstance(t, ast.Name))
         return names
 
+    def _fixed_format(self, arg):
+        """Fixed-format, fixed-width date text — the v0.34 exemption class.
+
+        v0.38.0 extended it: `%b` strftime sites became `format_date_label`
+        (the C-locale month table, 3-char month + 2-digit day = bounded by
+        construction exactly like the strftime it replaced), including the
+        f-string that embeds only such calls (`f"TODAY: {format_date_label(...)}"`).
+        """
+        def _is_fixed(call):
+            return getattr(call.func, "attr", None) == "strftime" or getattr(
+                call.func, "id", None
+            ) == "format_date_label"
+
+        if isinstance(arg, ast.Call):
+            return _is_fixed(arg)
+        if isinstance(arg, ast.JoinedStr):
+            # literal parts are static text; every DYNAMIC part must be fixed-format
+            return all(
+                isinstance(v, ast.Constant)
+                or (
+                    isinstance(v, ast.FormattedValue)
+                    and isinstance(v.value, ast.Call)
+                    and _is_fixed(v.value)
+                )
+                for v in arg.values
+            )
+        return False
+
     def _unfitted_draws(self, source, func_name):
         tree = ast.parse(source)
         fn = next(n for n in ast.walk(tree) if isinstance(n, ast.FunctionDef) and n.name == func_name)
@@ -492,7 +520,7 @@ class TestOneHomeInvariants(unittest.TestCase):
                 continue
             if isinstance(arg, ast.Constant):  # literal text
                 continue
-            if isinstance(arg, ast.Call) and getattr(arg.func, "attr", None) == "strftime":
+            if self._fixed_format(arg):
                 continue  # fixed format, fixed width
             name = arg.id if isinstance(arg, ast.Name) else None
             if name in fitted or name in self.EXEMPT_NAMES or name in literals:

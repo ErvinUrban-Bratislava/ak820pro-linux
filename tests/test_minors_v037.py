@@ -51,6 +51,7 @@ sys.path.insert(0, str(ROOT))
 from PIL import Image, ImageDraw, ImageFont
 
 from ak820 import cli, configvalues, hud, renderers, screen
+from ak820.errors import FontMissingError
 from ak820.screen import (
     FONT_BOLD_PATHS,
     FONT_MONO_PATHS,
@@ -141,6 +142,11 @@ FIXED_DISPLAY_STRINGS = (
     "Turns ",
     " Years",
     " yrs",
+    # v0.38.0: the C-locale month table drawn through `dates.format_date_label`
+    # (board header, hero ticker, every `date_label`) — drawn text that lives
+    # outside the renderer modules, so the probe matrix must cover it too.
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 )
 
 # Non-ASCII characters the renderers are allowed to draw, each with the home that
@@ -284,20 +290,20 @@ class TestEveryDrawnLiteralHasAGlyph(unittest.TestCase):
                         f"(U+{ord(ch):04X}) as tofu: {reason}",
                     )
 
-    def test_the_last_resort_font_draws_every_ascii_literal(self):
-        """`_load_font` falls back to PIL's default when NO catalog path exists.
+    def test_the_last_resort_font_is_gone(self):
+        """SUPERSEDED in v0.38.0 (was: the last-resort face draws every ASCII
+        literal). `_load_font` no longer falls back to PIL's `load_default`
+        face at all: that face renders `•` as `.notdef` tofu (re-measured in
+        v0.38.0), so the fallback sat OUTSIDE the allow-list promise this
+        module's lock makes — a silent degrade no probe could cover.
 
-        That font is Pillow's own bundled face and it is NOT a catalog font, so
-        the allow-list is not promised on it (measured: it has no `•`). What must
-        hold on it is the part the rule is built on: every ASCII literal renders.
-        """
-        default = ImageFont.load_default(size=_PROBE_SIZE)
-        notdef = _mask("\x00", default)
-        for ch in sorted(c for c in drawn_characters() if ord(c) < 128):
-            with self.subTest(ch=ch):
-                m = _mask(ch, default)
-                self.assertIsNotNone(m.getbbox(), f"default font draws {ch!r} blank")
-                self.assertNotEqual(m.tobytes(), notdef.tobytes())
+        The new premise is strictly stronger than the old test's: the default
+        face is unreachable from the render path, so every font a renderer
+        can ever hold is a catalog font the lock above actually proves out.
+        A font-less runner gets a typed FontMissingError (exit 10) naming the
+        fix instead of a screen full of boxes."""
+        with self.assertRaises(FontMissingError):
+            _load_font(["/nonexistent/ak820-v038-font.ttf"], 12)
 
 
 class TestAsciiOnlyRule(unittest.TestCase):

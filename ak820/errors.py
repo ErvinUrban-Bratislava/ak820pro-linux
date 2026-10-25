@@ -101,6 +101,25 @@ class InvalidFileError(AK820Error):
     exit_code = 9
 
 
+class FontMissingError(AK820Error):
+    """No usable catalog font exists on this machine (v0.38.0 glyph audit).
+
+    `_load_font` used to fall back to Pillow's `load_default` face when no
+    catalog path existed — a silent degrade measured live: that bundled face
+    renders the bullet separator (U+2022, on the drawn allow-list) as
+    `.notdef` tofu, so a font-less runner read "BOX" where every catalog font
+    draws a bullet. The allow-list is a promise about CATALOG fonts; the
+    fallback sat outside it, outside every probe, outside the lock.
+
+    Exit 10: a broken environment, not a broken command. The fix is
+    `apt-get install fonts-liberation` (or `fonts-dejavu-core`); retrying the
+    same command without one of those never helps — the same "fix the system,
+    then re-run" class as exit 4 (udev rule) rather than transient 75.
+    """
+
+    exit_code = 10
+
+
 class UploadIncompleteError(AK820Error):
     """Raised when the device fails to ACK every 4096-byte data chunk (Defect D2).
 

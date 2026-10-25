@@ -225,6 +225,18 @@ def render_media_card(media: dict | None = None) -> Image.Image:
     # screen, and the wrap loop dropped line 1 entirely for a title with no
     # word boundary in its first 14 chars. Every title is now measured: one
     # fitted line, or two greedy lines whose tail is marked instead of amputated.
+    #
+    # v0.38.0 glyph audit, DECIDED boundary: user-authored text (MPRIS
+    # titles/artists, hand-authored notes) is passed through byte-for-byte —
+    # no codepoint substitution at the render seam. The v0.37 lock covers the
+    # literals WE author; user text can hold any codepoint (emoji, CJK) and
+    # will tofu exactly like the old tags did, and that is accepted: the
+    # .notdef box IS the visible mark (a "?" mark would be ambiguous with a
+    # real "?" and a per-glyph probe in the --watch hot path buys no
+    # information), coverage is a system-font concern (install Noto), and the
+    # data layer keeps the raw codepoints (the m27/m28 print-seam boundary).
+    # Containment still holds: tofu glyphs have width, and fit_text/wrap
+    # measure pixels, so overflow is still marked, never amputated.
     title_lines = _wrap_media_title(draw, media.get("title", "No Track"), font_bold_m, MEDIA_TEXT_W)
     if len(title_lines) == 1:
         draw.text((8, 36), title_lines[0], fill=(255, 255, 255), font=font_bold_m)

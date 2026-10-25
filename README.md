@@ -264,6 +264,7 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
 | `8` | Input file not found (`upload <file>` / `--dry-run upload <file>` with a bad path, or `run <missing-command>`) — user error, retrying will not help | `FileMissingError` |
 | `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path / not writable (unwritable parent or target, unknown file extension), or `run <command>` is not executable | `InvalidFileError` |
+| `10` | No usable display font: no catalog font is installed (or every catalog path is unreadable) — install `fonts-liberation` or `fonts-dejavu-core`. The Pillow built-in default face is refused on purpose (it renders the drawn bullet separator as tofu) rather than silently degrading the screen | `FontMissingError` |
 | `75` | `EX_TEMPFAIL`: USB device vanished mid-operation — transient, systemd `Restart=on-failure` will re-run the command | `DeviceDisconnectedError` |
 | `130` | Interrupted by user (Ctrl+C / SIGINT) — friendly line, never a traceback; mid-upload nothing was flashed and the digest stays unrecorded, so a re-run re-aligns and retries | `KeyboardInterrupt` |
 
@@ -283,6 +284,7 @@ Since v0.9.0 the implementation lives in the `ak820/` package (every module < 30
 | `ak820/state.py` | Payload-hash dedup + pipe-clean flag driving the §3.5 alignment-skip (`AK820_STATE_PATH` override for tests) |
 | `ak820/errors.py` | Error taxonomy + exit-code contract above |
 | `ak820/events.py` | Events-config domain: path resolution, date validation, shape checks, countdown rows (PIL-free) |
+| `ak820/dates.py` | Locale-independent calendar text: the fixed C-locale month table behind every drawn date label (PIL-free leaf) |
 | `ak820/configvalues.py` | Field-value coercion at the `load_events_config` choke point (m18/m21) |
 | `ak820/parser.py` | The argparse surface: what the CLI accepts, nothing else |
 | `ak820/cli.py` | Offline-first routing, `--dry-run`, discovery, exit-code `main()` |

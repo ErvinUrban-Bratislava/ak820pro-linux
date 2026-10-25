@@ -27,9 +27,10 @@ from ak820.errors import AK820Error
 # §3.4 exit-code contract (D8 reconciled v0.12.0): 0 success, 2 argparse usage,
 # 3 device not found, 4 permission denied, 5 upload incomplete,
 # 6 invalid events config, 7 protocol desync, 8 input file not found (D11),
-# 9 input file unusable (D12/D14), 75 EX_TEMPFAIL transient mid-op disconnect
-# (systemd Restart= retries).
-DOCUMENTED_CODES = {0, 2, 3, 4, 5, 6, 7, 8, 9, 75}
+# 9 input file unusable (D12/D14), 10 no usable catalog font (v0.38.0 glyph
+# audit — fix the system, then re-run), 75 EX_TEMPFAIL transient mid-op
+# disconnect (systemd Restart= retries).
+DOCUMENTED_CODES = {0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 75}
 
 
 def _all_error_classes(cls=AK820Error):

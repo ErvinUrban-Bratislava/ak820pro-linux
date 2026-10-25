@@ -9,7 +9,7 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.37.0"  # kept in lockstep with pyproject [project] version
+__version__ = "0.38.0"  # kept in lockstep with pyproject [project] version
 
 from .actions import (
     build_radar_frames,
@@ -40,6 +40,7 @@ from .errors import (
     DeviceDisconnectedError,
     DeviceNotFoundError,
     FileMissingError,
+    FontMissingError,  # v0.38.0: no usable catalog font (exit 10)
     InvalidFileError,
     PermissionDeniedError,
     ProtocolError,
@@ -134,6 +135,7 @@ __all__ = [
     "DeviceDisconnectedError",
     "DeviceNotFoundError",
     "FileMissingError",
+    "FontMissingError",
     "HidTransport",
     "InvalidFileError",
     "LinuxHidrawTransport",

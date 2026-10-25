@@ -24,6 +24,7 @@ import struct
 
 from PIL import Image, ImageFont, ImageOps
 
+from .errors import FontMissingError
 from .protocol import MAX_FRAMES, SCREEN_HEIGHT, SCREEN_WIDTH
 
 try:  # optional accelerator (§4.4): never a hard dependency
@@ -69,16 +70,20 @@ def _load_font_cached(paths: tuple, size: int):
                 return ImageFont.truetype(p, size)
             except OSError:
                 continue
-    try:
-        return ImageFont.load_default(size=size)
-    except TypeError:  # Pillow < 10.1: load_default takes no size
-        return ImageFont.load_default()
+    # v0.38.0: the silent `load_default` fallback is GONE — that Pillow face
+    # renders the allow-list bullet as tofu (measured); the full why lives on
+    # FontMissingError. Refuse loudly and name the fix, never degrade to boxes.
+    raise FontMissingError(
+        f"No usable AK820 display font. Tried: {', '.join(paths) or '(empty catalog)'}. "
+        "Install fonts-liberation or fonts-dejavu-core (see FontMissingError)."
+    )
 
 
 def _load_font(paths, size: int):
     """First existing TTF from `paths` at `size`, cached via lru_cache (§4.2):
     `fit_text` probes up to 6 sizes per text element and --watch re-renders
-    every refresh, so re-parsing the same TTF was pure waste."""
+    every refresh, so re-parsing the same TTF was pure waste. Raises
+    FontMissingError (exit 10) when no catalog path loads (v0.38.0)."""
     return _load_font_cached(tuple(paths), size)
 
 

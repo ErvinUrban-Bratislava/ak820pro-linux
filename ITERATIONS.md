@@ -41,6 +41,8 @@
 | `v0.35.0` | 2026-10-25 | Done | m31 closed (self-healing trigger: 19 gate failures "value escaped above the panel") — the m30 containment rule was width-only: `fit_text` measured width but never line count, so a `\n` split a fitted line and a **centred** box (custom-card `--value`) drew its first line ten px above the panel (7-line value → y=15 vs panel y=25), top-anchored boxes spilled below their border, silent exit 0. Fixed at the single home of containment: new `screen.flatten_lines` collapses every `str.splitlines()` boundary to a space, called by both `fit_text` and `ellipsize`, so every caller inherits vertical containment; newline-free text returned byte-identical (parity-locked), CLI unchanged (loader stays permissive, m27/m28/m29 boundary), source invariants forbid re-implementation, §10 budget regression-guarded | `python3 -m unittest` 658/658 + `scripts/lint.sh` GREEN (ruff+mypy) + live pixel-containment render probes |
 | `v0.36.0` | 2026-10-25 | Done | m31b closed — the m30/m31 containment rule reached `hud.py`: media title/artist/album char-count caps (the exact proxy m30 rejected; 16-char title = 182 px amputated mid-glyph, single long word dropped line 1) replaced by `screen.fit_text` + a measured greedy wrap that marks its tail instead of dropping it; HUD `hostname` fitted to the clock's measured start x and `uptime` to its card border (live: painted to x=123 past the border at 121); every budget derived from the actual neighbouring element. New `configvalues.validate_single_line` (ConfigError 6) rejects line breaks in `events add --short/--title/--note` and `card --title/--value/--sub/--footer` at the ONE seam live and `--dry-run` share — the creation path refuses what the renderer can only flatten; loader stays permissive (CLI 6 / loader 0 table), CLI regex locked equal to `screen._LINE_BREAK_RE` (PIL-free twin), AST lock forbids any unfitted dynamic draw in hud | `python3 -m unittest` 693/693 + `scripts/lint.sh` GREEN + live real-hardware probes (break forms -> 6 zero-USB, valid -> 0, hand-edited `\n` still loads, renders measured contained) |
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
+| `v0.37.0` | 2026-10-25 | Done | m32 closed (row added retroactively in v0.38.0 — the v0.37.0 iteration updated the queue but not this table): media-header tags `▶ PLAYING`/`⏸ PAUSED` rendered TOFU on the production font (no catalog font carries `⏸` at all — the fact that decided the fix); tags became catalog-universal ASCII `PLAYING`/`PAUSED`/`MEDIA`; the drift lock is STATIC (every drawn literal ASCII except a probed allow-list `…`/`•`/`°`, AST-extracted from all renderers) so a tofu literal can never be added; minors: `card --save-preview` (same validation seam as live), `events list` flattens multi-line notes at the PRINT seam only (`configvalues.flatten_for_display`, PIL-free twin table-locked), `--force` help one-home | `python3 -m unittest` 726/726 + `scripts/lint.sh` GREEN + live real-hardware probes |
+| `v0.38.0` | 2026-10-25 | Done | The glyph audit's three remaining edges closed: the last-resort `load_default` fallback is a typed `FontMissingError` (exit 10) instead of a silent tofu degrade (measured: that face renders `•` as `.notdef`) — the allow-list promise now covers every font `_load_font` can return; locale-dependent `%b` drawn text replaced by the fixed C-locale month table in new PIL-free leaf `ak820/dates.py` (one home — cards may not import events, events stay PIL-free — `%b` AST-banned from shipped literals); user text (MPRIS/notes) DECIDED pass-through, no render-seam substitution — the `.notdef` box IS the mark, boundary locked behaviorally | `python3 -m unittest` 750/750 + `scripts/lint.sh` GREEN + live real-hardware probes |
 
 ---
 
@@ -757,7 +759,7 @@
     no `•`, `%b` month names are locale-dependent drawn text, and user-authored
     text (MPRIS titles, notes) can hold any codepoint the catalogs lack.
 
-- [ ] **`v0.38.0`** — the glyph audit's three remaining edges, each measured in
+- [x] **`v0.38.0`** — the glyph audit's three remaining edges, each measured in
     v0.37.0 and deliberately left out of that iteration's scope:
     * **The last-resort font is outside the lock.** `_load_font` falls back to
       `ImageFont.load_default(size=...)` when NO catalog path exists, and that
@@ -780,4 +782,67 @@
       that boundary is recorded, not accidental. Decide whether a render-seam
       substitution (replace unmappable codepoints with a visible mark) is worth
       its cost on a 128x128 status screen, and record the decision either way.
+  - CLOSED (v0.38.0): all three edges decided and shipped after re-measuring
+    live (Pillow 12.1.1 `load_default` face: `•` mask byte-identical to its
+    `.notdef` — tofu — while `…`/`°` happen to render, a version accident
+    never a promise; no locale installed on this runner emits non-ASCII `%b`,
+    so the month lock is structural, not a repro).
+    (1) DECIDED typed startup error over ASCII separator or guaranteed face:
+    new `FontMissingError` (exit 10, taxonomy/README/`DOCUMENTED_CODES`/
+    package+shim re-exports synced like D11/D12) raised by `_load_font` when
+    no catalog path exists OR every existing one fails to load (corrupt file
+    — the old loop fell through to the fallback there too). WHY IT CANNOT
+    DRIFT: the fallback call is structurally dead (AST lock: no `load_default`
+    reachable in `screen.py`; prose may name it, code may not), so every font
+    a renderer can hold is a catalog font the v0.37 lock proves out. An ASCII
+    separator would fix only `•` and move every production render for a
+    machine that is not broken; a guaranteed-present face does not exist on
+    arbitrary Linux — Pillow's own lacks `•`. v0.37's last-resort test
+    superseded (stronger premise), CLI end-to-end exit 10 proven with zero
+    USB.
+    (2) DECIDED fixed C-locale month table: new PIL-free leaf `ak820/dates.py`
+    (`MONTH_ABBREVS` + `format_date_label`, byte-identical to C-locale
+    `strftime("%b %d")` — equality locked under `LC_TIME=C` for all 12 months
+    × sample days incl. leap Feb 29) feeding `events.py`'s `date_label` and
+    all three `cards.py` sites. A leaf module because `cards` may never import
+    `events` (v0.25 lock) and `events` must stay PIL-free — the shared home
+    can be neither consumer. Anti-recurrence: `%b` AST-banned from every
+    shipped string literal (docstrings exempt — prose names the dead spec on
+    purpose, v0.37 precedent); v0.34's fixed-format draw exemption extended
+    to the table (incl. the `f"TODAY: {format_date_label(...)}"` f-string);
+    month abbreviations added to v0.37's `FIXED_DISPLAY_STRINGS` probe matrix.
+    (3) DECIDED NO render-seam substitution for user text, recorded at the
+    seam (`hud.py` comment) and locked behaviorally: the `.notdef` box IS the
+    visible mark (a `?` mark would be ambiguous with a real `?`), a per-glyph
+    probe in the `--watch` hot path buys no information, coverage is a
+    system-font concern, the data layer keeps raw codepoints (m27/m28
+    boundary), and containment is codepoint-blind — tofu glyphs have width
+    (vacuity-proven), so overflow is still marked, never amputated. Locks:
+    `fit_text`/`flatten_lines` return exotic text byte-identical when it
+    fits, the media renderer hands the raw title to the wrap untouched
+    (spy-proven), overflowing exotic text ends in `…` within budget.
+    Found while probing: the production daemon `ak820-smartd` is a USER-scope
+    unit whose unit file + script live outside the repo; the v0.37.0 summary
+    row was missing from the table (added retroactively); `events list`
+    columns pad by character count, so East-Asian-wide user text misaligns
+    the terminal table — queued below as v0.39.0.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+
+- [ ] **`v0.39.0`** — the print-seam's own m31b: `events list` pads its table
+    columns by CHARACTER COUNT (`str.ljust`/format specs), the exact proxy
+    class m31b rejected for the screen — a title or note containing
+    East-Asian-wide codepoints (CJK renders 2 terminal cells per char) shifts
+    every following column of that row (live-reproducible in any CJK-capable
+    terminal; the data itself is fine). Decide: pad with
+    `unicodedata.east_asian_width` display width at the print seam (one home,
+    `--json` and stored bytes untouched — the m27/m28 boundary again), or
+    document the terminal-alignment boundary with a test that pins today's
+    ragged behavior as accepted. While there (both found during v0.38.0
+    probes, record findings either way): (a) the numeric `strftime` sites
+    (`telemetry.py` `%H:%M`, `device.py` `%Y-%m-%d %H:%M:%S`) are
+    locale-independent by construction — document that exemption class next
+    to the `%b` ban so a future audit does not re-open it; (b) the production
+    daemon `ak820-smartd` (unit + `ak820_smartd.py`) lives outside the repo
+    while `systemd/` ships hud/radar units — decide whether vendoring the
+    smartd unit into the repo is worth the personal-data coupling.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

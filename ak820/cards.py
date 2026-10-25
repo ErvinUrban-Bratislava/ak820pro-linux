@@ -13,6 +13,7 @@ import datetime
 
 from PIL import Image, ImageDraw
 
+from .dates import format_date_label
 from .palette import THEMES
 from .screen import (
     FONT_BOLD_PATHS,
@@ -66,7 +67,7 @@ def render_hero_card(upcoming: list[dict], today: datetime.date | None = None) -
 
     if not upcoming:
         return render_custom_card(
-            "MILESTONES", "NONE", "Add events in JSON", today.strftime("%b %d"), "calm"
+            "MILESTONES", "NONE", "Add events in JSON", format_date_label(today), "calm"
         )
 
     ev = upcoming[0]
@@ -156,7 +157,9 @@ def render_hero_card(upcoming: list[dict], today: datetime.date | None = None) -
         )
     else:
         f_next = _load_font(FONT_BOLD_PATHS, 10)
-        draw.text((24, 109), today.strftime("TODAY: %b %d"), font=f_next, fill=(148, 163, 184))
+        draw.text(
+            (24, 109), f"TODAY: {format_date_label(today)}", font=f_next, fill=(148, 163, 184)
+        )
 
     return img
 
@@ -179,9 +182,10 @@ def render_board_card(upcoming: list[dict], today: datetime.date | None = None) 
     draw.text((7, 6), label_s, font=f_hdr, fill=(56, 235, 255))
     lb = draw.textbbox((0, 0), label_s, font=f_hdr)
     # The date's budget is whatever the label leaves, derived from the measured
-    # label rather than hardcoded — a locale with a longer %b ellipsizes instead
-    # of sliding under the header label (m30's containment rule, applied here too).
-    date_s = today.strftime("%b %d").upper()
+    # label rather than hardcoded (m30's containment rule, applied here too).
+    # v0.38.0: the label comes from the C-locale month table, not strftime —
+    # byte-stable regardless of LC_TIME (see ak820/dates.py).
+    date_s = format_date_label(today).upper()
     f_hdr_date, date_s = fit_text(
         draw, date_s, FONT_BOLD_PATHS, 10, 10, 121 - (7 + (lb[2] - lb[0]))
     )
