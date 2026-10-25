@@ -33,6 +33,7 @@
 | `v0.25.0` | 2026-10-24 | Done | Architecture & Modularity (REVIEW.md §22): split the two top-level monoliths into single-responsibility package modules — `milestone_radar.py` (510 lines) → `ak820/events.py` (PIL-free events-config domain: D4/D5/m7/D22 validation + countdown rows) + `ak820/cards.py` (hero/board/custom renderers) + `ak820/palette.py` (THEMES urgency palette); `widgets.py` (359 lines) → `ak820/telemetry.py` (PIL-free sysfs/proc + playerctl/MPRIS probes) + `ak820/hud.py` (HUD/media card renderers); `ConfigError` moved into `ak820/errors.py` re-parented under `AK820Error` (exit 6 unchanged; `main()` now has ONE except branch and no shim import); both top-level files became identity shims and `ak820/` is now **self-contained** (zero imports of `milestone_radar`/`widgets`); all 21 package modules + 3 shims < 300 lines; 13-fixture render manifest byte-identical pre/post | `python3 -m unittest` 391/391 + `scripts/lint.sh` GREEN + byte-identical render parity + live events-CRUD/dry-run/preview/exit-2/6 probes via shim |
 | `v0.29.0` | 2026-10-25 | Done | Comprehensive Re-Audit (REVIEW.md §25, cadence 5): D25 non-object `backlight` section (raw AttributeError exit 1 at every idle restore, live-proven on hardware) + D26 `"events": null` (passed D22's `is not None` guard; `cfg.get("events", [])` returns the null, not the default — raw TypeError exit 1 on list/add/radar) both closed at the `load_events_config` choke point as ConfigError 6 naming section + JSON kind (`configvalues.kind` promoted public — one vocabulary with m18/m21); m22 `--dry-run probe` no longer swallows the interface report (probe sends zero USB); AST anti-recurrence invariant forbids None-comparison guards at the choke point; README Architecture table synced from the pre-v0.16 eight-module world to all 24 modules + 3 shims | `python3 -m unittest` 494/494 + `scripts/lint.sh` GREEN + live real-hardware exit-6/`--dry-run probe` probes |
 | `v0.28.0` | 2026-10-25 | Done | m21 closed — `idle_rainbow` bool coercion at the `configvalues` choke point: new `_as_bool` + `_IDLE_BOOL_FIELDS` (bools pass; `0`/`1` ints and `"true"/"false"/"1"/"0"` text case/whitespace-insensitive coerce losslessly; `"yes"`, `2`, `-1`, `1.0`, `null`, list/object → `ConfigError` 6 naming `backlight.idle_rainbow` — same taxonomy as m18); the m21 repro `"false"` now writes rainbow byte 0 (was 1); anti-recurrence invariant locks every `get_idle_backlight_cfg` `bl.get` field into a coercion list; README exit-6 row synced | `python3 -m unittest` 469/469 + `scripts/lint.sh` GREEN + live real-hardware probes (`"false"` → 0/coerced, `"yes"` → 6 both seams) |
+| `v0.30.0` | 2026-10-25 | Done | Carried §25 minors: m23 idle int bounds at the `configvalues` choke point (bounds in `protocol.py` feed loader AND parser choices — one home; `_IDLE_INT_FIELDS` derived from `_IDLE_INT_RANGES` so an unbounded idle int field is unrepresentable; out-of-range -> ConfigError 6 naming field + range) + m24 one case-insensitive id-or-title identity rule (`_same_event`) shared by add + remove + m25 re-add preserves unknown hand-added fields (`dict(prior)` rebuild, `--note` wins, m20 no-op extends) + m26 `non_negative_float` rejects negative `--seconds`/`--watch`/`--dwell` at parse time (usage 2) | `python3 -m unittest` 519/519 + `scripts/lint.sh` GREEN + live real-hardware exit-6/exit-2/CRUD probes |
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
 
 ---
@@ -443,7 +444,7 @@
     tracebacks), `--dry-run probe` → report, valid config unchanged,
     version 0.29.0. Queued m23–m26 below.
 
-- [ ] **`v0.30.0`** — Carried §25 minors (config-value bounds + CRUD
+- [x] **`v0.30.0`** — Carried §25 minors (config-value bounds + CRUD
     consistency):
   - m23: `idle_mode` config value is unbounded — the CLI bounds 0..19 via
     `parse_mode`, but a hand-edited `"idle_mode": 255` wraps silently in
@@ -460,4 +461,45 @@
   - m26: `finite_float` accepts negatives — `--dwell -5` cycles presets
     instantly, `--watch -5` silently disables watch; reject `< 0` at parse
     time (usage 2) or document.
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - **Shipped:** all four closed after live pre-fix repro (wire-byte + CLI
+    evidence: 255 -> byte 255, 256 -> 0, brightness 9 -> silent 5; remove
+    DAUGHTER -> 6; re-add dropped `icon`/`priority`; `--dwell -5` parsed).
+    m23 DECIDED range validation over clamp (a silent clamp is the guessing
+    m18/m21 killed): bounds live in `protocol.py` (`MAX_BRIGHTNESS`/
+    `MAX_SPEED`/`MAX_DIRECTION` beside `MAX_LIGHT_MODE`) and feed BOTH
+    `_as_int(bounds=...)` -> ConfigError 6 naming field + range AND
+    `parser.py`'s argparse choices — one home, no CLI/loader drift;
+    `_IDLE_INT_FIELDS` is DERIVED from `_IDLE_INT_RANGES`, so an unbounded
+    idle int field is no longer representable (root cause structurally
+    dead). m24: one identity rule `config._same_event` — id AND title
+    case-insensitive, shared by add + remove (add's case-sensitive title
+    match had the mirror bug: a re-add duplicated instead of updated);
+    empty needles never match. m25 DECIDED preserve (the v0.27.0 note
+    precedent generalized): re-add starts from `dict(prior)`, schema
+    fields overwrite, `--note` wins, m20 no-op extends over extras
+    (mtime-stable). m26: new `non_negative_float` (composes `finite_float`,
+    which stays the nan/inf home) on `--seconds`/`--watch`/`--dwell` ->
+    usage exit 2; zero stays valid. README exit-2/6 rows + Testing count
+    synced; REVIEW.md §26. `tests/test_minors_v030.py` (25 offline tests,
+    zero hardware: wire-byte in-range proof, table-driven exit-6 per field,
+    device-never-touched repro-form proof, bounds single-home + derivation
+    + parser-choices drift locks, matcher both directions, D13/m20/D24
+    regressions, shim parity). Suite 494 -> 519; `scripts/lint.sh` GREEN;
+    live real-hardware probes: `idle_mode: 255` -> 6 friendly on both
+    seams (was a silent garbage byte), valid config -> 0 device restored,
+    `remove DAUGHTER` -> "Removed 1", negative flags -> 2 pre-device,
+    `--dry-run probe` intact, version 0.30.0. Found while probing: m27
+    queued below.
+
+- [ ] **`v0.31.0`** — m27 (found during the v0.30.0 probes): `events add
+    --short` accepts an empty or whitespace-only value — `--short " "`
+    yields the degenerate id `"-"` and `--short ""` the empty id, with a
+    blank `short_title` screen label; the v0.30.0 `_same_event` empty-
+    needle guard keeps these from colliding, but the entry is unusable
+    (radar renders an empty label, removal needs the title). Validate
+    non-empty-after-strip at the CLI (ConfigError 6 family, the D4
+    precedent — `--short` is the id's only source), lock the empty-needle
+    semantics of `_same_event` against regression, and decide whether
+    `--title` deserves the same strip guard.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.

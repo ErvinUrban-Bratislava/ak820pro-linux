@@ -115,6 +115,16 @@ LIGHT_MODES = {
 
 MAX_LIGHT_MODE = max(LIGHT_MODES.values())
 
+# MODE_DATA byte bounds (m23, v0.30.0): brightness and speed are levels 0..5,
+# direction is 0..3 (FINDINGS.md byte layout). `set_backlight` clamps/masks
+# them silently (9 -> 5, 7 -> 3); `configvalues` now names out-of-range config
+# values instead, and `parser.py` builds its argparse choices from these same
+# constants — CLI surface and config loader can never drift (the validate_note
+# single-home pattern applied to bounds).
+MAX_BRIGHTNESS = 5
+MAX_SPEED = 5
+MAX_DIRECTION = 3
+
 
 def parse_mode(value: str) -> int:
     """Resolve a lighting mode spec (name or number) to an int in 0..19.

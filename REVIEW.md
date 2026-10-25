@@ -1689,3 +1689,83 @@ Queued for v0.30.0: m23 (`idle_mode` config value unbounded — CLI bounds
 m24 (`events remove` id match case-sensitive vs title case-insensitive),
 m25 (`events add` re-add drops unknown hand-added entry fields), m26
 (negative `--dwell`/`--watch` accepted by `finite_float`).
+
+---
+
+## 26. Carried §25 Minors — Config Bounds + CRUD Consistency (v0.30.0, 2026-10-25)
+
+All four minors reproduced live against v0.29.0 before fixing (pre-fix
+evidence: `idle_mode: 255` -> MODE_DATA[0] == 255, `256` -> 0, brightness
+`9` -> silent 5 on the wire; `events remove DAUGHTER` -> exit 6; re-add
+dropped `icon`/`priority`; `--dwell -5`/`--watch -5` parsed fine), then
+closed with the taxonomy the m18/m21/D25/D26 line established:
+present-but-wrong is named, never guessed.
+
+**m23 — idle int fields coerced but unbounded.** A hand-edited
+`"idle_mode": 255` reached the wire as MODE_DATA[0] == 255 (outside the
+firmware's 0..19 mode range), `256` wrapped silently to 0 via `& 0xFF`,
+`-1` wrapped to 255, and brightness/speed/direction were silently clamped or
+masked (9 -> 5, 42 -> 5, 7 -> 3). DECIDED: per-field range validation at the
+`configvalues` choke point (mirror the CLI's bounds), not a documented clamp
+— a silent clamp is exactly the guessing m18/m21 killed for wrong types.
+Bounds live in `protocol.py` (`MAX_BRIGHTNESS`/`MAX_SPEED`/`MAX_DIRECTION`
+beside the existing `MAX_LIGHT_MODE`) and feed BOTH `_as_int(bounds=...)`
+and `parser.py`'s argparse choices — one home, CLI and loader can never
+drift (the `validate_note` pattern applied to numbers). Anti-recurrence is
+structural: `_IDLE_INT_FIELDS` is now DERIVED from `_IDLE_INT_RANGES`, so an
+unbounded idle int field is no longer representable — m23's root cause is
+dead, not patched. Out-of-range -> ConfigError (6) naming field + range
+(`backlight.idle_mode must be in 0..19, got 255`).
+
+**m24 — event identity was case-asymmetric.** `remove` matched id
+case-sensitively but title case-insensitively (`events remove DAUGHTER`
+exited 6 next to a working `events remove daughter` — ids are generated
+lowercase); `add` matched BOTH case-sensitively, so a re-add with a
+differently-cased title duplicated the entry instead of updating it. One
+identity rule now — `config._same_event(ev, ev_id, title)`: both fields
+case-insensitive, shared by `add` and `remove` so they can never drift.
+Empty needles never match (an entry with an absent id must not collide with
+`--short ""` or an empty remove target).
+
+**m25 — re-add dropped unknown hand-added fields.** `events add` rebuilt
+the entry from the six schema fields only; hand-added fields (`icon`,
+`priority`, ...) vanished silently on every update — the v0.27.0
+note-dropping precedent generalized. The rebuild now starts from
+`dict(prior)` and overwrites the schema fields; `--note` still wins over
+the preserved note, and the m20 no-op skip extends over the preserved
+extras (bytes + mtime stable).
+
+**m26 — negative durations parsed fine and were silently wrong.**
+`--dwell -5` put the demo's per-preset deadline in the past (presets
+cycled instantly), `--watch -5` failed the `> 0` gate (watch silently
+disabled), `radar --seconds -5` clamped to the 1-frame minimum. New
+`non_negative_float` (composing `finite_float`, which stays the nan/inf
+home) rejects `< 0` at parse time — argparse's friendly usage error,
+documented exit 2. Zero stays valid (`--watch 0` = no watch).
+
+### 26.1 Verification
+
+`tests/test_minors_v030.py` (25 offline tests, zero hardware): wire-byte
+proof in-range (MODE_DATA[0] == 19) and table-driven exit-6 rejection for
+every out-of-range field/value through the load choke point, incl. the m23
+repro form at the consumer seam with device-never-touched proof; numeric
+strings bounded too (`"255"` -> 6, `"19"` -> 19); bounds single-home lock
+(`_IDLE_INT_RANGES` IS the protocol constants) + derivation lock
+(`_IDLE_INT_FIELDS == tuple(_IDLE_INT_RANGES)`) + parser-choices drift lock
+(argparse choices built from the same constants); identity-matcher unit +
+CLI tests both directions (uppercase id remove, mixed-case title remove,
+duplicate-free re-add, D13 no-match 6 byte-stable, empty-target 6); m25
+extras survive/schema win/note rules intact/no-op mtime-stable; m26 exit-2
+table for all four flags, zero-valid, D24 nan/inf regression, unit-level
+`non_negative_float`; shim parity for the three new constants.
+Suite: 494 -> 519 tests, all green (5 numpy-optional skips);
+`scripts/lint.sh` GREEN. Live probes on real hardware through the shim:
+`events list`/`status idle --config` with `idle_mode: 255` -> 6 friendly
+(was a silent garbage byte on the wire), valid config -> 0 with the device
+restored, `events remove DAUGHTER` -> "Removed 1", `--dwell -5`/`--watch -5`
+-> exit 2 before any device touch, `--dry-run probe` report intact (m22),
+version 0.30.0.
+
+Found while probing: `events add --short` accepts an empty/whitespace-only
+value -> degenerate id (`""` or `"-"`) and a blank screen label -> queued
+for v0.31.0 as m27.

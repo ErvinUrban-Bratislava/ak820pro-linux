@@ -13,6 +13,8 @@ Invariant: `cli.build_parser is parser.build_parser` (re-export, not a copy)
 import argparse
 import math
 
+from .protocol import MAX_BRIGHTNESS, MAX_DIRECTION, MAX_LIGHT_MODE, MAX_SPEED
+
 
 def finite_float(value: str) -> float:
     """argparse type (D24, v0.24.0): any float EXCEPT nan/inf.
@@ -25,6 +27,22 @@ def finite_float(value: str) -> float:
     num = float(value)  # ValueError -> argparse turns it into an exit-2 usage error
     if not math.isfinite(num):
         raise argparse.ArgumentTypeError(f"{value!r} is not a finite number")
+    return num
+
+
+def non_negative_float(value: str) -> float:
+    """argparse type (m26, v0.30.0): finite_float AND >= 0.
+
+    Durations cannot be negative, and a negative one was silently wrong,
+    never loud: `--dwell -5` put the demo's per-preset deadline in the past
+    (presets cycled instantly), `--watch -5` failed the `> 0` gate (watch
+    silently disabled), `radar --seconds -5` clamped to the 1-frame minimum.
+    Reject at parse time — argparse's friendly usage error, documented exit 2
+    (the D24/m16 class `finite_float` established; it stays the nan/inf home).
+    """
+    num = finite_float(value)
+    if num < 0:
+        raise argparse.ArgumentTypeError(f"{value!r} is negative; this value must be >= 0")
     return num
 
 
@@ -72,7 +90,7 @@ def build_parser():
     )
     p.add_argument(
         "--seconds",
-        type=finite_float,
+        type=non_negative_float,
         default=5.0,
         help="Dwell time in seconds per slide in cycle/hybrid mode (default: 5.0)",
     )
@@ -118,7 +136,7 @@ def build_parser():
     )
     p.add_argument(
         "--watch",
-        type=finite_float,
+        type=non_negative_float,
         default=0,
         help="Continuously refresh every N seconds (e.g. --watch 15)",
     )
@@ -132,7 +150,7 @@ def build_parser():
     )
     p.add_argument(
         "--watch",
-        type=finite_float,
+        type=non_negative_float,
         default=0,
         help="Continuously refresh every N seconds (e.g. --watch 10)",
     )
@@ -195,7 +213,7 @@ def build_parser():
     )
     d.add_argument(
         "--dwell",
-        type=finite_float,
+        type=non_negative_float,
         default=6.0,
         help="Seconds to display each preset (default: 6.0)",
     )
@@ -209,7 +227,8 @@ def build_parser():
         help="Apply a named showcase preset",
     )
     s.add_argument(
-        "--mode", help="Lighting mode name or integer 0..19 (e.g. static, breath, spectrum)"
+        "--mode",
+        help=f"Lighting mode name or integer 0..{MAX_LIGHT_MODE} (e.g. static, breath, spectrum)",
     )
     s.add_argument("--color", default="#FFE0B2", help="Hex color (e.g. #FF8C00, #00E5FF, #FFFFFF)")
     s.add_argument("--rainbow", action="store_true", help="Enable multi-color rainbow mode")
@@ -217,17 +236,21 @@ def build_parser():
         "--brightness",
         type=int,
         default=4,
-        choices=range(6),
-        help="Brightness level 0..5 (default: 4)",
+        choices=range(MAX_BRIGHTNESS + 1),
+        help=f"Brightness level 0..{MAX_BRIGHTNESS} (default: 4)",
     )
     s.add_argument(
-        "--speed", type=int, default=3, choices=range(6), help="Animation speed 0..5 (default: 3)"
+        "--speed",
+        type=int,
+        default=3,
+        choices=range(MAX_SPEED + 1),
+        help=f"Animation speed 0..{MAX_SPEED} (default: 3)",
     )
     s.add_argument(
         "--direction",
         type=int,
         default=0,
-        choices=[0, 1, 2, 3],
+        choices=list(range(MAX_DIRECTION + 1)),
         help="Animation direction (0=Left, 1=Up, 2=Down, 3=Right)",
     )
     s.add_argument(

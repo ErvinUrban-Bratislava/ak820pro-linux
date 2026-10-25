@@ -250,11 +250,11 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | Code | Meaning | Raised as |
 |:---|:---|:---|
 | `0` | Success (includes dedup skip: identical payload already on screen) | — |
-| `2` | Usage error: argparse bad/missing flags, invalid `--mode`/`--color` value, non-finite `--seconds`/`--watch`/`--dwell` (nan/inf), `backlight` without an action, or `run` with no command | `argparse` / `SystemExit(2)` |
+| `2` | Usage error: argparse bad/missing flags, invalid `--mode`/`--color` value, non-finite (nan/inf) or negative `--seconds`/`--watch`/`--dwell`, `backlight` without an action, or `run` with no command | `argparse` / `SystemExit(2)` |
 | `3` | Device not found (is the keyboard connected via USB?) | `DeviceNotFoundError` |
 | `4` | Permission denied on the device node — install the udev rule from `udev/` (see Setup) | `PermissionDeniedError` |
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
-| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list, `null` included / entry not an object / `backlight` section not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder (config value or `events add --note`), non-numeric idle-backlight field, non-boolean `idle_rainbow` such as the string `"false"` —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
+| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list, `null` included / entry not an object / `backlight` section not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder (config value or `events add --note`), non-numeric idle-backlight field, non-boolean `idle_rainbow` such as the string `"false"`, out-of-range idle-backlight field (`idle_mode` outside 0..19, `idle_brightness`/`idle_speed` outside 0..5, `idle_direction` outside 0..3) —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
 | `8` | Input file not found (`upload <file>` / `--dry-run upload <file>` with a bad path, or `run <missing-command>`) — user error, retrying will not help | `FileMissingError` |
 | `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path / not writable (unwritable parent or target, unknown file extension), or `run <command>` is not executable | `InvalidFileError` |
@@ -300,7 +300,7 @@ See [`FINDINGS.md`](FINDINGS.md).
 
 ## Testing
 
-The full suite (470+ tests) is device-free: a `FakeTransport` SN32F290 firmware simulator with injectable ACK drops exercises the upload protocol with no keyboard attached.
+The full suite (515+ tests) is device-free: a `FakeTransport` SN32F290 firmware simulator with injectable ACK drops exercises the upload protocol with no keyboard attached.
 
 ```bash
 python3 -m unittest discover -s tests -v

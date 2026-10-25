@@ -21,6 +21,10 @@ Contract (mirrors D22's taxonomy at the same single choke point):
   through, `0`/`1` ints and `"true"/"false"/"1"/"0"` text coerce losslessly,
   everything else — `"yes"`, `2`, `null` — is ConfigError (6), never a truthy
   guess in `set_backlight`'s `1 if rainbow else 0` byte assembly.
+* idle int fields are range-checked against the firmware/CLI bounds (m23,
+  v0.30.0): `idle_mode` 0..19 (mirrors `parse_mode`), brightness/speed 0..5
+  and direction 0..3 (mirror the argparse choices). A hand-edited 255 used to
+  reach the wire as byte 255 and 256 wrapped silently to 0 via `& 0xFF`.
 
 `load_events_config` is the only caller; consumers that inject hand-built
 dicts directly (unit-test seams) bypass this and keep their own contract.
@@ -29,12 +33,25 @@ dicts directly (unit-test seams) bypass this and keep their own contract.
 import string
 
 from .errors import ConfigError
+from .protocol import MAX_BRIGHTNESS, MAX_DIRECTION, MAX_LIGHT_MODE, MAX_SPEED
 
 # String-valued event fields every consumer renders, lowercases or sorts by.
 _EVENT_TEXT_FIELDS = ("id", "title", "short_title", "date", "category", "note")
 # Idle-backlight fields persisted by `backlight set --save` (backlight.py).
 _IDLE_TEXT_FIELDS = ("idle_preset", "idle_color")
-_IDLE_INT_FIELDS = ("idle_mode", "idle_brightness", "idle_speed", "idle_direction")
+# m23 (v0.30.0): every idle int field carries its firmware/CLI bound, and the
+# field list is DERIVED from this dict — an unbounded idle int field is no
+# longer representable, so m23's root cause (a coerced-but-unbounded int) is
+# structurally dead, not just patched. Bounds mirror the CLI exactly:
+# `parse_mode` 0..MAX_LIGHT_MODE and the argparse choices 0..5 / 0..3 live in
+# protocol.py + parser.py built from the same constants — one home, no drift.
+_IDLE_INT_RANGES: dict[str, tuple[int, int]] = {
+    "idle_mode": (0, MAX_LIGHT_MODE),
+    "idle_brightness": (0, MAX_BRIGHTNESS),
+    "idle_speed": (0, MAX_SPEED),
+    "idle_direction": (0, MAX_DIRECTION),
+}
+_IDLE_INT_FIELDS = tuple(_IDLE_INT_RANGES)
 # The one bool-valued idle field (m21): it feeds `1 if rainbow else 0` in
 # set_backlight's MODE_DATA byte, where any non-empty string is truthy.
 _IDLE_BOOL_FIELDS = ("idle_rainbow",)
@@ -61,18 +78,35 @@ def _as_text(value: object, where: str, path: str) -> str:
     raise ConfigError(f"Events config {path}: {where} must be a string, got {kind(value)}.")
 
 
-def _as_int(value: object, where: str, path: str) -> int:
-    """int / integral float / numeric string -> int; anything else -> ConfigError (6)."""
+def _as_int(value: object, where: str, path: str, bounds: tuple[int, int] | None = None) -> int:
+    """int / integral float / numeric string -> int; anything else -> ConfigError (6).
+
+    m23 (v0.30.0): `bounds=(lo, hi)` rejects out-of-range values at the choke
+    point instead of letting `set_backlight`'s byte assembly guess — 255 went
+    out as MODE_DATA[0] == 255 (outside the firmware's 0..19 mode range), 256
+    wrapped silently to 0 via `& 0xFF`, and brightness/speed/direction were
+    clamped or masked (9 -> 5, 7 -> 3). Present-but-wrong is named, never
+    guessed — the same stance m18/m21 take on wrong-typed values.
+    """
+    num: int | None
     if isinstance(value, int):  # bool included: True & 0xFF == 1, harmless byte value
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, str):
+        num = value
+    elif isinstance(value, float) and value.is_integer():
+        num = int(value)
+    elif isinstance(value, str):
         try:
-            return int(value.strip())
+            num = int(value.strip())
         except ValueError:
-            pass
-    raise ConfigError(f"Events config {path}: {where} must be an integer, got {kind(value)}.")
+            num = None
+    else:
+        num = None
+    if num is None:
+        raise ConfigError(f"Events config {path}: {where} must be an integer, got {kind(value)}.")
+    if bounds is not None and not bounds[0] <= num <= bounds[1]:
+        raise ConfigError(
+            f"Events config {path}: {where} must be in {bounds[0]}..{bounds[1]}, got {num}."
+        )
+    return num
 
 
 def _as_bool(value: object, where: str, path: str) -> bool:
@@ -137,7 +171,8 @@ def coerce_config_values(cfg: dict, path: str) -> dict:
                 bl[field] = _as_text(bl[field], f"backlight.{field}", path)
         for field in _IDLE_INT_FIELDS:
             if field in bl:
-                bl[field] = _as_int(bl[field], f"backlight.{field}", path)
+                lo, hi = _IDLE_INT_RANGES[field]
+                bl[field] = _as_int(bl[field], f"backlight.{field}", path, bounds=(lo, hi))
         for field in _IDLE_BOOL_FIELDS:
             if field in bl:
                 bl[field] = _as_bool(bl[field], f"backlight.{field}", path)

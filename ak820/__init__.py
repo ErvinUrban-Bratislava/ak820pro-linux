@@ -9,7 +9,7 @@ split: `actions` (upload/RTC/radar frames), `backlight` + `status` (lighting),
 HANDLERS dispatch + §3.4 exit-code main()). `ak820_ctrl.py` is a pure shim.
 """
 
-__version__ = "0.29.0"  # kept in lockstep with pyproject [project] version
+__version__ = "0.30.0"  # kept in lockstep with pyproject [project] version
 
 from .actions import (
     build_radar_frames,
@@ -54,8 +54,11 @@ from .protocol import (
     HIDIOCSFEATURE_65,
     IMG_CFG_SETUP_DELAY,
     LIGHT_MODES,
+    MAX_BRIGHTNESS,
+    MAX_DIRECTION,
     MAX_FRAMES,
     MAX_LIGHT_MODE,
+    MAX_SPEED,
     PIDS,
     SCREEN_HEIGHT,
     SCREEN_WIDTH,
@@ -109,8 +112,11 @@ __all__ = [
     "HIDIOCSFEATURE_65",
     "IMG_CFG_SETUP_DELAY",
     "LIGHT_MODES",
+    "MAX_BRIGHTNESS",
+    "MAX_DIRECTION",
     "MAX_FRAMES",
     "MAX_LIGHT_MODE",
+    "MAX_SPEED",
     "PIDS",
     "RGB565_FRAME_BYTES",
     "SCREEN_H",

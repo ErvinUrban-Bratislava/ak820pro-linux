@@ -31,6 +31,24 @@ def today_from_args(args):
         ) from None
 
 
+def _same_event(ev: dict, ev_id: str | None, title: str | None) -> bool:
+    """One event-identity rule for `add` and `remove` (m24, v0.30.0).
+
+    ids are generated lowercase by `events add --short`, but hand-edited
+    configs and typed targets arrive in any case. `remove` used to match id
+    case-sensitively while matching title case-insensitively (`events remove
+    DAUGHTER` exited 6 next to a working `events remove daughter`), and `add`
+    matched both case-sensitively (a re-add with a differently-cased title
+    duplicated the entry). Both fields now compare case-insensitively through
+    this single home so the two sub-actions can never drift. An empty needle
+    never matches: a hand-edited entry with an absent id must not collide
+    with `--short ""` or an empty remove target.
+    """
+    if ev_id and (ev.get("id") or "").lower() == ev_id.lower():
+        return True
+    return bool(title and (ev.get("title") or "").lower() == title.lower())
+
+
 def cmd_events(args):
     """`events list|add|remove` against the events JSON config (D4: add validates dates)."""
     cfg_path = getattr(args, "config", None)
@@ -60,23 +78,25 @@ def cmd_events(args):
             configvalues.validate_note(note, f"--note {note!r}")
         ev_id = args.short.lower().replace(" ", "-")
         old_events = cfg.get("events", [])
-        prior = next(
-            (e for e in old_events if e.get("id") == ev_id or e.get("title") == args.title), None
+        prior = next((e for e in old_events if _same_event(e, ev_id, args.title)), None)
+        # m25 (v0.30.0): rebuilding from the six schema fields dropped unknown
+        # hand-added fields (icon, priority, ...) silently on every update —
+        # start from the prior entry and overwrite the schema fields instead.
+        # This also subsumes the v0.27.0 note preservation: an omitted --note
+        # keeps the replaced entry's note via the copy; --note always wins.
+        entry = dict(prior) if prior is not None else {}
+        entry.update(
+            {
+                "id": ev_id,
+                "title": args.title,
+                "short_title": args.short.upper(),
+                "date": args.date,
+                "category": args.category,
+            }
         )
-        entry = {
-            "id": ev_id,
-            "title": args.title,
-            "short_title": args.short.upper(),
-            "date": args.date,
-            "category": args.category,
-        }
         if note is not None:
             entry["note"] = note
-        elif prior is not None and "note" in prior:
-            # v0.27.0: a re-add without --note used to silently drop the entry's
-            # note — the one field JSON-only until now. Preserve it.
-            entry["note"] = prior["note"]
-        kept = [e for e in old_events if e.get("id") != ev_id and e.get("title") != args.title]
+        kept = [e for e in old_events if not _same_event(e, ev_id, args.title)]
         kept.append(entry)
         target_path = cfg_path or events.get_default_events_path()
         if kept == old_events:
@@ -91,10 +111,10 @@ def cmd_events(args):
         return 0
     elif action == "remove":
         before = len(cfg.get("events", []))
+        # m24 (v0.30.0): id matched case-sensitively while title matched
+        # case-insensitively — one identity rule now, shared with `add`.
         cfg["events"] = [
-            e
-            for e in cfg.get("events", [])
-            if e.get("id") != args.target and e.get("title", "").lower() != args.target.lower()
+            e for e in cfg.get("events", []) if not _same_event(e, args.target, args.target)
         ]
         if len(cfg["events"]) == before:
             # D13 (v0.18.0): a no-match remove used to print "Removed 0 event(s)."
