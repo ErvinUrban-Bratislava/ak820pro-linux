@@ -18,6 +18,7 @@ import logging
 import sys
 
 from .actions import describe_payload
+from .backlight import list_backlight_presets
 from .config import (
     cmd_card_preview,
     cmd_events,
@@ -83,6 +84,20 @@ def _dispatch(args):
         log.debug("hidraw discovery: tft=%s ctrl=%s", tft, ctrl)
         print(f"TFT Data Interface (0xFF68):    {tft or 'NOT FOUND'}")
         print(f"Control/RTC Interface (0xFF13): {ctrl or 'NOT FOUND'}")
+        return 0
+
+    # m35 (v0.41.0, CI self-heal): `backlight list` prints the static preset
+    # catalog — it opens no device and sends zero USB bytes — yet it routed
+    # through discovery + open, so a machine without the keyboard exited 3
+    # instead of printing the table (the v0.40 device-free test passed locally
+    # only because real hardware was plugged in; CI proved it). Same class as
+    # m22's probe: an informational command must not require the device it
+    # merely describes. Routed before --dry-run for the same reason — the
+    # table IS the command's output, not a payload preview (supersedes
+    # v0.29's "nothing to preview" pin for `list`; device-bound non-render
+    # actions keep that line).
+    if args.command == "backlight" and args.bl_action == "list":
+        list_backlight_presets()
         return 0
 
     # B7: --dry-run renders the exact payload and reports digest + chunk count

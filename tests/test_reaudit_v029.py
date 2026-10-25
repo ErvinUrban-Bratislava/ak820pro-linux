@@ -298,9 +298,14 @@ class TestDryRunProbePassthrough(unittest.TestCase):
         self.assertIn("dry-run", out.lower())
 
     def test_dry_run_non_render_command_message_kept(self):
-        # backlight list etc. keep the documented "nothing to preview" line —
-        # only probe (pure observation) was rerouted.
-        rc, out, err = _run_main(["--dry-run", "backlight", "list"])
+        # m35 (v0.41.0) supersession: `backlight list` is now offline-routed
+        # (it prints the catalog with zero device access — CI exit 3 proved
+        # the old route required hardware), so it no longer reaches this line.
+        # The pin moves to a device-bound non-render action; the invariant —
+        # the dry-run block still answers non-render commands with the
+        # documented line — is unchanged. Only probe (v0.29) and `backlight
+        # list` (v0.41) were rerouted.
+        rc, out, err = _run_main(["--dry-run", "backlight", "set", "--preset", "warm-white"])
         self.assertEqual(rc, 0)
         self.assertIn("nothing to preview", out)
 

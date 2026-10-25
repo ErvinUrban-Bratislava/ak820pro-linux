@@ -44,6 +44,7 @@
 | `v0.37.0` | 2026-10-25 | Done | m32 closed (row added retroactively in v0.38.0 — the v0.37.0 iteration updated the queue but not this table): media-header tags `▶ PLAYING`/`⏸ PAUSED` rendered TOFU on the production font (no catalog font carries `⏸` at all — the fact that decided the fix); tags became catalog-universal ASCII `PLAYING`/`PAUSED`/`MEDIA`; the drift lock is STATIC (every drawn literal ASCII except a probed allow-list `…`/`•`/`°`, AST-extracted from all renderers) so a tofu literal can never be added; minors: `card --save-preview` (same validation seam as live), `events list` flattens multi-line notes at the PRINT seam only (`configvalues.flatten_for_display`, PIL-free twin table-locked), `--force` help one-home | `python3 -m unittest` 726/726 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.38.0` | 2026-10-25 | Done | The glyph audit's three remaining edges closed: the last-resort `load_default` fallback is a typed `FontMissingError` (exit 10) instead of a silent tofu degrade (measured: that face renders `•` as `.notdef`) — the allow-list promise now covers every font `_load_font` can return; locale-dependent `%b` drawn text replaced by the fixed C-locale month table in new PIL-free leaf `ak820/dates.py` (one home — cards may not import events, events stay PIL-free — `%b` AST-banned from shipped literals); user text (MPRIS/notes) DECIDED pass-through, no render-seam substitution — the `.notdef` box IS the mark, boundary locked behaviorally | `python3 -m unittest` 750/750 + `scripts/lint.sh` GREEN + live real-hardware probes |
 | `v0.39.0` | 2026-10-25 | Done | The print seam's own m31b closed: `events list`/`backlight list` pad every dynamic column by DISPLAY width via new stdlib-only leaf `ak820/textwidth.py` (east_asian_width W/F = 2 cells — char-count padding shifted every following column of a CJK row, live-reproved; `--json` and stored bytes keep raw codepoints); numeric-strftime exemption class documented in `dates.py` + both sites and pinned by a directive allow-list; `ak820-smartd` DECIDED to stay OUT of the repo (personal-data coupling), boundary documented in README | `python3 -m unittest` 781/781 + `scripts/lint.sh` GREEN + live device-free probes (CJK table aligned, presets table byte-stable) |
+| `v0.41.0` | 2026-10-25 | Done | CI self-heal (m35): `backlight list` required the device it merely describes — the v0.40 device-free test passed locally ONLY because hardware was plugged in; hardware-less CI (all four Pythons) died with exit 3. Routed offline in `_dispatch` before the --dry-run block (m22's probe precedent: an informational command that sends zero USB bytes must not require the device it describes; its output IS the result, not a payload preview), superseding v0.29's "nothing to preview" pin for `list` (moved to `backlight set --preset`); class lock — an AST scan forces every device-bound CLI call in the shipped suite to mock the device in its enclosing function (offline argv skipped, argparse-rejection site exempt by name, lock vacuity-proven) | `python3 -m unittest` 818/818 + `scripts/lint.sh` GREEN (ruff+mypy) + device-free probes (list prints with discovery raising, dry-run table, `set` keeps the line, zero USB, smartd active) |
 | `v0.40.0` | 2026-10-25 | Done | The print seam's last unaligned input closed (m34): TAB is rejected at the CLI and flattened at the display seam — the vocabulary widened from line breaks to ALL control characters (`[\x00-\x1f\x7f-\x9f\u2028\u2029]`: a tab advances to a position-dependent tab stop and every control char has a terminal-defined advance, live-reproved `A\tB`/`A\x01B` shifting every following cell), the m31b+m32 dual structure kept (CLI 6 / permissive loader), twins locked equal; table geometry single-homed in new `ak820/tables.py` (pure formatters: width constants are the one home, the header and every pad name them, the rule is derived from the header via new `textwidth.rule` — 65/69 cells replacing the undriven `"-" * 68`/`"-" * 80`; `--json` cannot reach flattening/padding by construction) | `python3 -m unittest` 810/810 + `scripts/lint.sh` GREEN (ruff+mypy) + live device-free probes (tab/CJK rows aligned, `--json` raw, presets byte-stable, zero USB, smartd active) |
 
 ---
@@ -912,7 +913,32 @@
     terminals render the joined sequence as ~17) — queued as v0.41.0.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
 
-- [ ] **`v0.41.0`** — the width rule's last misalignment class: GRAPHEME
+- [x] **`v0.41.0`** — CI SELF-HEALING TRIGGER (run 40206869749, all four
+    Python versions): `test_minors_v040.TestBacklightListEndToEnd` failed
+    `3 != 0 : Error: AK820 Pro USB HID interfaces not found` — the suite's
+    only unmocked device-bound CLI call. `backlight list` prints the static
+    preset catalog (zero device access, zero USB bytes) yet `_dispatch`
+    routed it through discovery + open, so the v0.40 test passed locally
+    ONLY because this machine has the keyboard plugged in; hardware-less CI
+    proved the suite's own device-free premise was violated.
+  - CLOSED (v0.41.0, m35): DECIDED route `backlight list` offline in
+    `_dispatch`, before the --dry-run block — the m22 precedent verbatim (an
+    informational command must not require the device it merely describes;
+    its output IS the command's result, not a payload preview). Supersedes
+    v0.29's "nothing to preview" pin for `--dry-run backlight list` (pin
+    moved to `backlight set --preset` — device-bound actions keep the line).
+    Anti-recurrence locks the CLASS, not the instance: an AST scan over every
+    shipped test file requires every main-style call whose argv names a
+    device-bound command to mock the device (`find_hidraw_devices` /
+    `AK820ProDevice` / `FakeTransport`) in its enclosing function;
+    --dry-run/--save-preview argv is offline by construction and skipped;
+    the one argparse-rejects-before-discovery site is exempt by name; the
+    lock is proven non-vacuous on a synthetic source.
+    tests/test_minors_v041.py (8 tests, zero hardware).
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+
+- [ ] **`v0.42.0`** — (displaced from v0.41.0 by the CI self-heal trigger)
+    the width rule's last misalignment class: GRAPHEME
     CLUSTERS. `display_width` counts codepoints, but a terminal collapses
     ZWJ-joined emoji sequences (and variation selectors / skin-tone modifiers
     merge into their base glyph) into ONE cell-run — live-measured: title
