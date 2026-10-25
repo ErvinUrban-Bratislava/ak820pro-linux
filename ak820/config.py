@@ -8,7 +8,7 @@ import datetime
 import json
 import os
 
-from . import events
+from . import configvalues, events
 from .errors import ConfigError, InvalidFileError
 
 
@@ -52,18 +52,32 @@ def cmd_events(args):
         return 0
     elif action == "add":
         events.parse_event_date(args.date)  # D4: fail fast at the CLI, never store a bad date
+        note = getattr(args, "note", None)
+        if note is not None:
+            # v0.27.0: --note obeys the same {years}-only rule as the config
+            # loader (configvalues.validate_note is the single home) — a bad
+            # placeholder is ConfigError (6) at the CLI, never a render KeyError.
+            configvalues.validate_note(note, f"--note {note!r}")
         ev_id = args.short.lower().replace(" ", "-")
         old_events = cfg.get("events", [])
-        kept = [e for e in old_events if e.get("id") != ev_id and e.get("title") != args.title]
-        kept.append(
-            {
-                "id": ev_id,
-                "title": args.title,
-                "short_title": args.short.upper(),
-                "date": args.date,
-                "category": args.category,
-            }
+        prior = next(
+            (e for e in old_events if e.get("id") == ev_id or e.get("title") == args.title), None
         )
+        entry = {
+            "id": ev_id,
+            "title": args.title,
+            "short_title": args.short.upper(),
+            "date": args.date,
+            "category": args.category,
+        }
+        if note is not None:
+            entry["note"] = note
+        elif prior is not None and "note" in prior:
+            # v0.27.0: a re-add without --note used to silently drop the entry's
+            # note — the one field JSON-only until now. Preserve it.
+            entry["note"] = prior["note"]
+        kept = [e for e in old_events if e.get("id") != ev_id and e.get("title") != args.title]
+        kept.append(entry)
         target_path = cfg_path or events.get_default_events_path()
         if kept == old_events:
             # m20 (v0.26.0, §21): an identical re-add used to rewrite the file

@@ -1533,4 +1533,55 @@ through the shim: `events list/--json/add/remove` via `$AK820_EVENTS_PATH`,
 no-match remove → 6, bad `--date` → 6, bare `backlight` → 2. Found while
 probing: `events` rejects `--config` while `radar` accepts it → queued v0.26.0.
 
+## 23. Config-Override Parity Completed on the Device-Bound Surface (v0.27.0, 2026-10-25)
+
+The v0.26.0 invariant — *every events-config consumer accepts the same
+`--config` override* — held for the offline surface (`radar`, `events`) but not
+for the device-bound one: `backlight set/off --save` persisted the idle preset
+only through `$AK820_EVENTS_PATH`'s target, and the `status`/`run` keypress
+idle-restore read it the same way — no flag existed. v0.27.0 threads an
+optional `config_path` through `get_idle_backlight_cfg`/
+`save_idle_backlight_cfg`/`apply_idle_backlight`/`set_status_backlight` and
+exposes `--config` on `backlight` (parent + SUPPRESS sub-action positions,
+sub-action wins — the v0.26.0 argparse pattern), `status`, and `run`.
+`backlight demo/list` parse the flag uniformly but never touch the config
+(documented parse-and-ignore, so scripts can pass one `$CONFIG` everywhere).
+
+`events add --note` closes the last JSON-only event field, validated through
+the new public `configvalues.validate_note` — the single home of the
+`{years}`-only rule, shared with the load-time coercion so the CLI and the
+loader can never drift (both `ConfigError` 6). A re-add without `--note`
+preserves the replaced entry's `note` instead of silently dropping it, and
+m20's no-op skip extends over the preserved note (byte + mtime stable).
+
+**Library trust boundary (decision):** `compute_upcoming_events` keeps *no*
+second type guard — the D22/m18 choke point at `load_events_config` is the
+invariant's only home, and a duplicated guard in the render hot path would
+only drift. Hand-injecting callers (test seams, embedding tools) own their
+contract; the boundary is documented in the docstring and locked by test.
+
+`SHOWCASE_PRESETS` moved to new pure-data `ak820/presets.py` (identity
+re-export through `backlight`, shim/package surfaces unchanged) to keep
+`backlight.py` under the §10 budget after the threading — 221 lines.
+
+### 23.1 Verification
+
+`tests/test_device_config_parity_v027.py` (36 offline tests, zero hardware):
+`--config` parsing in both positions + precedence + None defaults across
+backlight/status/run; `config_path` beating `$AK820_EVENTS_PATH` in
+get/save/apply incl. a wire-level MODE_DATA byte proof and the m19 regression
+through the new seam; handler threading spies (`cmd_backlight`/`cmd_status`/
+`cmd_run`); `--note` write/validate-6/file-untouched/preserve/replace/no-op-
+mtime/render; shared-rule identity (same note rejected by loader AND CLI with
+6); trust-boundary docstring lock; presets re-export identity + line budget.
+Suite: 422 → 458 tests, all green (5 numpy-optional skips); `scripts/lint.sh`
+GREEN. Live probes on real hardware through the shim: `backlight set --preset
+warm-white --save --config F` wrote the idle block into F (legacy default
+untouched), `status idle --config F` / `run --config F -- true` → 0, `--note`
+add → 0 + render "kept 0", no-op re-add mtime-stable with note preserved,
+`--note "{years} in {place}"` → 6, version 0.27.0. Found while probing:
+`backlight.idle_rainbow` is in no `configvalues` field list — a hand-edited
+`"false"` string is truthy in `set_backlight`'s byte assembly (rainbow ON
+when the user meant OFF) → queued v0.28.0 (m21).
+
 ---

@@ -35,7 +35,7 @@ _CONFIG_HELP = (
 
 def build_parser():
     """Identical argparse tree to the pre-0.9.0 ak820_ctrl CLI (flag-for-flag)."""
-    from .backlight import SHOWCASE_PRESETS
+    from .presets import SHOWCASE_PRESETS
 
     parser = argparse.ArgumentParser(
         description="Ajazz AK820 Pro Linux Screen, Clock & Milestone Radar Controller"
@@ -163,6 +163,14 @@ def build_parser():
     ev_a.add_argument(
         "--category", choices=["birthday", "anniversary", "milestone"], default="milestone"
     )
+    # v0.27.0: `note` was the one event field that required hand-editing JSON.
+    # Validated by the same {years}-only rule as the config loader (configvalues).
+    ev_a.add_argument(
+        "--note",
+        default=None,
+        help="Note template; only {years} may be interpolated (e.g. 'Shipped {years} yrs "
+        "after V1'). Omit to keep an existing entry's note when re-adding.",
+    )
     ev_r = ev.add_parser("remove", help="Remove a milestone by id or title")
     ev_r.add_argument("target", help="Event id or title to remove")
     ev_r.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
@@ -171,6 +179,12 @@ def build_parser():
     sub.add_parser("probe", help="Detect keyboard HID interfaces")
 
     bl = sub.add_parser("backlight", help="Control RGB keyboard backlighting (modes, colors, demo)")
+    # v0.27.0 --config parity: the flag parses wherever `radar`/`events` accept
+    # it — parent here, SUPPRESS on the sub-actions (argparse copies the
+    # sub-action namespace over the parent's, so a None default would clobber
+    # `backlight --config F set`; sub-action position wins on conflict). Only
+    # the --save paths write the config; demo/list parse-and-ignore the value.
+    bl.add_argument("--config", help=_CONFIG_HELP)
     # D21 (v0.24.0, §21): bare `ak820 backlight` used to crash with an
     # AttributeError traceback — the "set" fallback reads attributes (preset,
     # color, ...) that only exist once a sub-action parsed them. Requiring the
@@ -185,7 +199,9 @@ def build_parser():
         default=6.0,
         help="Seconds to display each preset (default: 6.0)",
     )
-    bls.add_parser("list", help="List all lighting modes and showcase presets")
+    d.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
+    ls = bls.add_parser("list", help="List all lighting modes and showcase presets")
+    ls.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
     s = bls.add_parser("set", help="Set lighting mode, color, brightness or preset")
     s.add_argument(
         "--preset",
@@ -219,8 +235,10 @@ def build_parser():
         action="store_true",
         help="Save as default idle ambient preset in events config & device flash",
     )
+    s.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
     o = bls.add_parser("off", help="Turn keyboard backlighting off")
     o.add_argument("--save", action="store_true", help="Save off state as default in device flash")
+    o.add_argument("--config", default=argparse.SUPPRESS, help=_CONFIG_HELP)
 
     st = sub.add_parser(
         "status", help="Set workflow status lighting (in-progress, success, failed, idle)"
@@ -236,6 +254,8 @@ def build_parser():
         action="store_true",
         help="Do not wait for keypress to restore idle (exit immediately)",
     )
+    # v0.27.0 --config parity: the keypress-restore idle step reads this config.
+    st.add_argument("--config", help=_CONFIG_HELP)
 
     rn = sub.add_parser(
         "run",
@@ -243,6 +263,8 @@ def build_parser():
     )
     rn.add_argument("--label", default=None, help="Optional text label for command")
     rn.add_argument("--no-wait", action="store_true", help="Do not wait for keypress on completion")
+    # v0.27.0 --config parity: the completion idle restore reads this config.
+    rn.add_argument("--config", help=_CONFIG_HELP)
     rn.add_argument(
         "cmd", nargs=argparse.REMAINDER, help="Command to execute (e.g. -- make, -- ./build.sh)"
     )

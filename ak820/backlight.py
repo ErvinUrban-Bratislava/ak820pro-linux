@@ -7,96 +7,11 @@ idle-preset persistence since the v0.25.0 split.
 
 import sys
 import time
-from typing import Any
 
 from . import events
 from .errors import ConfigError
+from .presets import SHOWCASE_PRESETS  # re-export identity (v0.27.0 §10 data split)
 from .protocol import CMD_DELAY, LIGHT_MODES, _cmd_packet, parse_hex_color, parse_mode
-
-# Heterogeneous preset records (str/int/bool values) — `Any` keeps the dict
-# values usable at call sites (status.py demo) without lying about types.
-SHOWCASE_PRESETS: list[dict[str, Any]] = [
-    {
-        "key": "warm-white",
-        "name": "Warm White",
-        "mode": 1,
-        "color": "#FFE0B2",
-        "rainbow": False,
-        "brightness": 4,
-        "speed": 3,
-        "desc": "Subtle incandescent glow, easy on the eyes for coding & reading",
-    },
-    {
-        "key": "amber-retro",
-        "name": "Amber Terminal",
-        "mode": 1,
-        "color": "#FF8C00",
-        "rainbow": False,
-        "brightness": 4,
-        "speed": 3,
-        "desc": "Warm retro amber terminal glow",
-    },
-    {
-        "key": "cyber-cyan",
-        "name": "Cyber Cyan",
-        "mode": 1,
-        "color": "#00E5FF",
-        "rainbow": False,
-        "brightness": 4,
-        "speed": 3,
-        "desc": "Crisp modern cyberpunk cyan highlight",
-    },
-    {
-        "key": "spectrum",
-        "name": "Spectrum Wave",
-        "mode": 8,
-        "color": "#000000",
-        "rainbow": True,
-        "brightness": 4,
-        "speed": 3,
-        "desc": "Continuous smooth full-spectrum rainbow color cycle",
-    },
-    {
-        "key": "single-on",
-        "name": "Reactive Typing",
-        "mode": 2,
-        "color": "#00E5FF",
-        "rainbow": False,
-        "brightness": 5,
-        "speed": 3,
-        "desc": "Stealth ambient: keys illuminate under your fingers as you type",
-    },
-    {
-        "key": "breath-lavender",
-        "name": "Breathing Lavender",
-        "mode": 7,
-        "color": "#BA68C8",
-        "rainbow": False,
-        "brightness": 4,
-        "speed": 2,
-        "desc": "Slow, relaxing lavender breathing pulsation",
-    },
-    {
-        "key": "flowing",
-        "name": "Flowing Stream",
-        "mode": 16,
-        "color": "#000000",
-        "rainbow": True,
-        "brightness": 4,
-        "speed": 3,
-        "desc": "Dynamic gradient flowing sideways across the keyboard",
-    },
-    {
-        "key": "off",
-        "name": "Stealth (Off)",
-        "mode": 0,
-        "color": "#000000",
-        "rainbow": False,
-        "brightness": 0,
-        "speed": 0,
-        "desc": "Zero LEDs, completely dark",
-    },
-]
 
 
 def set_backlight(
@@ -145,8 +60,10 @@ def set_backlight(
     dev.handshake()
 
 
-def get_idle_backlight_cfg() -> dict:
-    cfg = events.load_events_config()
+def get_idle_backlight_cfg(config_path: str | None = None) -> dict:
+    """Idle ambient preset (v0.27.0: `config_path` honors the same `--config`
+    override every other events-config consumer accepts; None = env/default)."""
+    cfg = events.load_events_config(config_path)
     bl = cfg.get("backlight", {})
     return {
         "preset": bl.get("idle_preset", "warm-white"),
@@ -167,8 +84,10 @@ def save_idle_backlight_cfg(
     brightness: int = 4,
     speed: int = 3,
     direction: int = 0,
+    config_path: str | None = None,
 ):
-    cfg = events.load_events_config()
+    """Persist the idle ambient preset (v0.27.0: `config_path` = `--config`)."""
+    cfg = events.load_events_config(config_path)
     cfg["backlight"] = {
         "idle_preset": idle_preset,
         "idle_mode": mode,
@@ -178,11 +97,11 @@ def save_idle_backlight_cfg(
         "idle_speed": speed,
         "idle_direction": direction,
     }
-    events.save_events_config(cfg)
+    events.save_events_config(cfg, config_path)
 
 
-def apply_idle_backlight(dev):
-    cfg = get_idle_backlight_cfg()
+def apply_idle_backlight(dev, config_path: str | None = None):
+    cfg = get_idle_backlight_cfg(config_path)
     preset_key = cfg.get("preset")
     preset = next((p for p in SHOWCASE_PRESETS if p["key"] == preset_key), None)
     if preset:
@@ -220,6 +139,10 @@ def list_backlight_presets():
 def dispatch_backlight(dev, args):
     """`backlight <demo|list|off|set>` subcommand routing (moved out of _main_impl)."""
     action = args.bl_action or "set"
+    # v0.27.0 --config parity: the --save paths persist the idle preset into the
+    # same override every events-config consumer honors (parent or sub-action
+    # position; demo/list never touch the config, the flag just parses uniformly).
+    cfg_path = getattr(args, "config", None)
     if action == "demo":
         from .status import run_backlight_demo
 
@@ -229,7 +152,7 @@ def dispatch_backlight(dev, args):
     elif action == "off":
         set_backlight(dev, mode=0, brightness=0, save=args.save)
         if args.save:
-            save_idle_backlight_cfg(idle_preset="off", mode=0, brightness=0)
+            save_idle_backlight_cfg(idle_preset="off", mode=0, brightness=0, config_path=cfg_path)
         print("Backlight turned OFF.")
     elif action == "set":
         if args.preset:
@@ -254,6 +177,7 @@ def dispatch_backlight(dev, args):
                     rainbow=p["rainbow"],
                     brightness=p["brightness"],
                     speed=p["speed"],
+                    config_path=cfg_path,
                 )
             print(f"Applied preset '{p['name']}' (`{p['key']}`).")
         else:
@@ -290,6 +214,7 @@ def dispatch_backlight(dev, args):
                     brightness=args.brightness,
                     speed=args.speed,
                     direction=args.direction,
+                    config_path=cfg_path,
                 )
             print(
                 f"Applied lighting (mode={mode_val}, color={args.color}, brightness={args.brightness})."

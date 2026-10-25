@@ -134,8 +134,10 @@ ak820 events list
 # Override the config file (accepted before or after the sub-action)
 ak820 events list --config ./my-events.json
 
-# Add a milestone
+# Add a milestone (optional --note template; only {years} may be interpolated)
 ak820 events add --title "Daughter's Birthday" --short "DAUGHTER" --date "2025-11-06" --category birthday
+ak820 events add --title "Ship V2" --short "SHIPV2" --date "2026-12-01" --note "Shipped {years} yrs after V1"
+# Re-adding without --note keeps an existing entry's note; identical re-adds skip the write
 
 # Push 2-slide alternating radar (Hero Countdown + 3-Row Family Board)
 ak820 radar --view cycle --sync-clock
@@ -156,6 +158,10 @@ ak820 backlight set --preset warm-white --save
 # Manual adjustment:
 ak820 backlight set --mode breath --color "#FF8C00" --speed 3 --brightness 4
 ak820 backlight off
+
+# Store the idle preset in a different events config (--config is accepted before
+# or after the action; `status`/`run` idle-restore honors the same override):
+ak820 backlight set --preset cyber-cyan --save --config ./my-events.json
 ```
 
 ---
@@ -248,7 +254,7 @@ Every `ak820` command follows a stable `$?` contract so scripts and CI wrappers 
 | `3` | Device not found (is the keyboard connected via USB?) | `DeviceNotFoundError` |
 | `4` | Permission denied on the device node — install the udev rule from `udev/` (see Setup) | `PermissionDeniedError` |
 | `5` | Upload incomplete: device dropped chunk ACKs even after the one automatic full retry — nothing was flashed, no digest recorded | `UploadIncompleteError` |
-| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list / entry not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder, non-numeric idle-backlight field —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
+| `6` | Invalid events config (malformed event date, corrupt JSON, wrong shape — not an object / `events` not a list / entry not an object —, wrong field value type — non-scalar `title`/`date`/`category`/`note`, unsupported `note` placeholder (config value or `events add --note`), non-numeric idle-backlight field —, or an unreadable/unwritable config file — nothing saved or rendered) | `ConfigError` |
 | `7` | Protocol desync: device answered with a malformed/unexpected reply (ACK magic mismatch), or the data pipe will not align after one retry — transfer state unknown, aborted | `ProtocolError` |
 | `8` | Input file not found (`upload <file>` / `--dry-run upload <file>` with a bad path, or `run <missing-command>`) — user error, retrying will not help | `FileMissingError` |
 | `9` | Input file exists but is unusable: not an image, a directory, or corrupt/truncated — a `--save-preview` target is an existing directory / non-directory path / not writable (unwritable parent or target, unknown file extension), or `run <command>` is not executable | `InvalidFileError` |

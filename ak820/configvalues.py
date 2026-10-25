@@ -61,17 +61,21 @@ def _as_int(value: object, where: str, path: str) -> int:
     raise ConfigError(f"Events config {path}: {where} must be an integer, got {_kind(value)}.")
 
 
-def _check_note(note: str, where: str, path: str) -> None:
-    """Only {years} may be interpolated (compute_upcoming_events' format call)."""
+def validate_note(note: str, where: str) -> None:
+    """Only {years} may be interpolated (compute_upcoming_events' format call).
+
+    Public seam (v0.27.0): the single home of the `{years}`-only rule, shared
+    by the load-time coercion below and `events add --note` CLI validation,
+    so the two entry points can never drift. `where` is the full location
+    phrase in the message (e.g. "events[0].note" or "--note").
+    """
     try:
         parsed = list(string.Formatter().parse(note))
     except ValueError as exc:  # unbalanced / lone brace
-        raise ConfigError(f"Events config {path}: {where} has malformed braces: {exc}") from exc
+        raise ConfigError(f"{where} has malformed braces: {exc}") from exc
     for _, field, _, _ in parsed:
         if field not in (None, "years"):
-            raise ConfigError(
-                f"Events config {path}: {where} uses {{{field}}}; only {{years}} is supported."
-            )
+            raise ConfigError(f"{where} uses {{{field}}}; only {{years}} is supported.")
 
 
 def coerce_config_values(cfg: dict, path: str) -> dict:
@@ -87,7 +91,7 @@ def coerce_config_values(cfg: dict, path: str) -> dict:
             if field in ev:
                 ev[field] = _as_text(ev[field], f"events[{idx}].{field}", path)
         if "note" in ev:  # coerced to str just above, safe to parse
-            _check_note(ev["note"], f"events[{idx}].note", path)
+            validate_note(ev["note"], f"Events config {path}: events[{idx}].note")
     bl = cfg.get("backlight")
     if isinstance(bl, dict):
         for field in _IDLE_TEXT_FIELDS:

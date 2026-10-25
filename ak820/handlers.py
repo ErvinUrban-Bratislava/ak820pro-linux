@@ -83,7 +83,14 @@ def cmd_backlight(args, dev):
 
 
 def cmd_status(args, dev):
-    set_status_backlight(dev, args.state, label=args.label, wait_key=not args.no_wait)
+    # v0.27.0 --config parity: the idle-restore step honors the same override.
+    set_status_backlight(
+        dev,
+        args.state,
+        label=args.label,
+        wait_key=not args.no_wait,
+        config_path=getattr(args, "config", None),
+    )
 
 
 def cmd_run(args, dev):
@@ -95,7 +102,8 @@ def cmd_run(args, dev):
         # (same class as argparse), not the undocumented generic exit 1.
         print("Error: No command specified to run.", file=sys.stderr)
         sys.exit(2)
-    set_status_backlight(dev, "in-progress", label=args.label)
+    cfg_path = getattr(args, "config", None)  # v0.27.0 --config parity
+    set_status_backlight(dev, "in-progress", label=args.label, config_path=cfg_path)
     try:
         # S603: the `run` subcommand exists to exec a user-supplied command —
         # untrusted input is the feature contract, not an injection surface.
@@ -113,9 +121,13 @@ def cmd_run(args, dev):
             f"Command not executable: {cmd[0]} ({exc.strerror or 'permission denied'})"
         ) from exc
     if res.returncode == 0:
-        set_status_backlight(dev, "success", label=args.label, wait_key=not args.no_wait)
+        set_status_backlight(
+            dev, "success", label=args.label, wait_key=not args.no_wait, config_path=cfg_path
+        )
     else:
-        set_status_backlight(dev, "failed", label=args.label, wait_key=not args.no_wait)
+        set_status_backlight(
+            dev, "failed", label=args.label, wait_key=not args.no_wait, config_path=cfg_path
+        )
         # m14 (v0.21.0): a child killed by signal N used to exit with
         # (-N) & 0xFF (e.g. 247 for SIGKILL). Adopt the shell convention
         # 128+N so wrappers can tell "killed by SIGKILL" (137) from a plain

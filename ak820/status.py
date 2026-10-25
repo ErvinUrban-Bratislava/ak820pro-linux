@@ -7,12 +7,21 @@ keyboard before restoring the ambient idle preset.
 
 import time
 
-from .backlight import SHOWCASE_PRESETS, apply_idle_backlight, set_backlight
+from .backlight import apply_idle_backlight, set_backlight
+from .presets import SHOWCASE_PRESETS
 from .protocol import LIGHT_MODES
 from .transport import wait_for_keypress
 
 
-def set_status_backlight(dev, status_name: str, label: str | None = None, wait_key: bool = True):
+def set_status_backlight(
+    dev,
+    status_name: str,
+    label: str | None = None,
+    wait_key: bool = True,
+    config_path: str | None = None,
+):
+    """Workflow status lighting (v0.27.0: `config_path` threads the `--config`
+    override into the idle-restore step — the events-config consumer here)."""
     status_name = status_name.lower().strip()
     if status_name in ("in-progress", "busy", "progress", "work", "running"):
         tag = f" ({label})" if label else ""
@@ -30,7 +39,7 @@ def set_status_backlight(dev, status_name: str, label: str | None = None, wait_k
             print("⏳ Awaiting your next keypress on the keyboard to restore ambient lighting...")
             wait_for_keypress()
             print("⌨ Keypress detected! Restoring ambient idle backlight...")
-            apply_idle_backlight(dev)
+            apply_idle_backlight(dev, config_path)
     elif status_name in ("failed", "error", "fail", "err"):
         tag = f" ({label})" if label else ""
         print(f"✖ Status: FAILED{tag} -> Urgent Red backlight")
@@ -41,10 +50,10 @@ def set_status_backlight(dev, status_name: str, label: str | None = None, wait_k
             print("⏳ Awaiting your next keypress on the keyboard to acknowledge error...")
             wait_for_keypress()
             print("⌨ Keypress detected! Restoring ambient idle backlight...")
-            apply_idle_backlight(dev)
+            apply_idle_backlight(dev, config_path)
     elif status_name in ("idle", "normal", "reset", "clear"):
         print("Restoring ambient idle backlight...")
-        apply_idle_backlight(dev)
+        apply_idle_backlight(dev, config_path)
     else:
         print(f"Unknown status '{status_name}'. Valid: in-progress, success, failed, idle")
 

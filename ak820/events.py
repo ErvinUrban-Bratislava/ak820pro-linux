@@ -166,6 +166,19 @@ def _threshold(cfg: dict, key: str, default: int) -> int:
 
 
 def compute_upcoming_events(cfg: dict, today: datetime.date | None = None) -> list[dict]:
+    """Countdown rows for every event in `cfg`, sorted by (days_left, title).
+
+    Library trust boundary (v0.27.0 decision): the type/shape guarantees this
+    function relies on (string text fields, `{years}`-only notes, parseable
+    dates) are established ONCE at the load choke point — `load_events_config`
+    runs the D22 shape checks and the m18 `configvalues` coercion before any
+    consumer sees a dict. Callers that hand-build dicts and inject them here
+    directly (unit-test seams, embedding tools) bypass that choke point and own
+    their own contract: pass the coerced form (strings for text fields, valid
+    dates) or load through `load_events_config`. No second guard is duplicated
+    in this hot path — the single choke point is the invariant's only home
+    (D22/m18 architecture), and duplicating it here would only drift.
+    """
     if today is None:
         today = datetime.date.today()
 
