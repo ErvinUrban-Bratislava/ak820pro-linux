@@ -17,6 +17,10 @@ Contract (mirrors D22's taxonomy at the same single choke point):
   the fix-the-config class, naming the offending `events[i].field` location.
 * `note` may only interpolate `{years}` — any other placeholder (or unbalanced
   braces) is a ConfigError at load, never a KeyError at render time.
+* `idle_rainbow` is the one bool-valued field (m21, v0.28.0): bools pass
+  through, `0`/`1` ints and `"true"/"false"/"1"/"0"` text coerce losslessly,
+  everything else — `"yes"`, `2`, `null` — is ConfigError (6), never a truthy
+  guess in `set_backlight`'s `1 if rainbow else 0` byte assembly.
 
 `load_events_config` is the only caller; consumers that inject hand-built
 dicts directly (unit-test seams) bypass this and keep their own contract.
@@ -31,6 +35,11 @@ _EVENT_TEXT_FIELDS = ("id", "title", "short_title", "date", "category", "note")
 # Idle-backlight fields persisted by `backlight set --save` (backlight.py).
 _IDLE_TEXT_FIELDS = ("idle_preset", "idle_color")
 _IDLE_INT_FIELDS = ("idle_mode", "idle_brightness", "idle_speed", "idle_direction")
+# The one bool-valued idle field (m21): it feeds `1 if rainbow else 0` in
+# set_backlight's MODE_DATA byte, where any non-empty string is truthy.
+_IDLE_BOOL_FIELDS = ("idle_rainbow",)
+_TRUE_TEXTS = ("true", "1")
+_FALSE_TEXTS = ("false", "0")
 
 
 def _kind(value: object) -> str:
@@ -59,6 +68,30 @@ def _as_int(value: object, where: str, path: str) -> int:
         except ValueError:
             pass
     raise ConfigError(f"Events config {path}: {where} must be an integer, got {_kind(value)}.")
+
+
+def _as_bool(value: object, where: str, path: str) -> bool:
+    """bool / int 0|1 / "true"/"false"/"1"/"0" text -> bool; else ConfigError (6).
+
+    m21 (v0.28.0): a hand-edited `"idle_rainbow": "false"` is a non-empty
+    string — truthy in `set_backlight`'s byte assembly, so rainbow turned ON
+    when the user meant OFF (live-probe proven: MODE_DATA[8] == 1), and `null`
+    silently meant OFF instead of a fix-the-config error. Only the lossless
+    spellings pass (text case/whitespace-insensitive, mirroring `_as_int`'s
+    strip); every other value — `"yes"`, `2`, `1.0`, `null`, list/object —
+    names the field and exits 6, never a silent truthy guess.
+    """
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, int) and value in (0, 1):  # bool already returned
+        return bool(value)
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in _TRUE_TEXTS:
+            return True
+        if text in _FALSE_TEXTS:
+            return False
+    raise ConfigError(f"Events config {path}: {where} must be a boolean, got {_kind(value)}.")
 
 
 def validate_note(note: str, where: str) -> None:
@@ -100,4 +133,7 @@ def coerce_config_values(cfg: dict, path: str) -> dict:
         for field in _IDLE_INT_FIELDS:
             if field in bl:
                 bl[field] = _as_int(bl[field], f"backlight.{field}", path)
+        for field in _IDLE_BOOL_FIELDS:
+            if field in bl:
+                bl[field] = _as_bool(bl[field], f"backlight.{field}", path)
     return cfg

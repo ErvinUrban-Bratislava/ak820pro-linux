@@ -1585,3 +1585,41 @@ add → 0 + render "kept 0", no-op re-add mtime-stable with note preserved,
 when the user meant OFF) → queued v0.28.0 (m21).
 
 ---
+
+## 24. m21 — `idle_rainbow` Bool Coercion (v0.28.0, 2026-10-25)
+
+§23.1's live probe found the one idle field missing from every `configvalues`
+list: a hand-edited `"idle_rainbow": "false"` is a non-empty string — truthy
+in `set_backlight`'s `1 if rainbow else 0` byte assembly — rainbow turned ON
+when the user meant OFF (repro: MODE_DATA[8] == 1) — and `null` silently
+meant OFF instead of a fix-the-config error.
+
+Fix at the same m18/D22 choke point (`load_events_config` →
+`coerce_config_values`): `_IDLE_BOOL_FIELDS = ("idle_rainbow",)` coerced by
+`_as_bool` — bools pass through, `0`/`1` ints and `"true"/"false"/"1"/"0"`
+text (case/whitespace-insensitive, mirroring `_as_int`'s strip) coerce
+losslessly; everything else (`"yes"`, `2`, `-1`, `1.0`, `null`, list/object)
+is `ConfigError` (6) naming `backlight.idle_rainbow`. Rejecting `1.0` is
+deliberate: the lossless spellings are bool, int 0/1 and the four texts —
+close-but-not-lossless values are named, never guessed, matching the
+taxonomy's stance on `null`.
+
+### 24.1 Verification
+
+`tests/test_idle_rainbow_bool_v028.py` (11 offline tests, zero hardware):
+wire-byte proof (MODE_DATA[8]) through the consumer seam
+`apply_idle_backlight(dev, path)` for every accepted spelling incl. the m21
+repro form (`"false"` → byte 0); exit 6 naming `backlight.idle_rainbow`
+through the load choke point `events list --config` for every rejected value
+(JSON-kind naming proven: "got null"); `ConfigError` at the consumer seam;
+coerced bool persisted by `events add` (the hand-edited string never survives
+a round-trip); absent-field default stays `False`. Anti-recurrence invariant:
+every `bl.get(...)` key in `get_idle_backlight_cfg` must appear in one of the
+three coercion field lists — m21's root cause (a field in no list) now fails
+the suite mechanically. Suite: 458 → 469 tests, all green (5 numpy-optional
+skips); `scripts/lint.sh` GREEN. Live probes on real hardware through the
+shim: `events list --config F` / `status idle --config F` with
+`"idle_rainbow": "false"` → 0 (coerced OFF, rainbow byte 0), with `"yes"` →
+6 naming the field on both surfaces, version 0.28.0.
+
+---

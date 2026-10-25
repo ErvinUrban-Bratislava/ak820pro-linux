@@ -31,6 +31,7 @@
 | `v0.24.0` | 2026-10-24 | Done | Comprehensive Re-Audit (REVIEW.md §21): D20 successful upload exited **1** (`main()` returned `True`, bool-is-int → console wrapper `sys.exit(True)` → 1; both uploaded & dedup-skip now map to 0, shim `__main__` uses `sys.exit(main())`) + D21 bare `backlight` AttributeError traceback → required sub-action, usage 2 + D22 events-config shape/read/write violations (non-object, bad `events`, directory/unreadable/unwritable) → `ConfigError` 6 at the single load choke point + D23 `--save-preview` write failures (unwritable parent/target, unknown extension) → `InvalidFileError` 9 + D24 `--seconds/--watch/--dwell nan|inf` → `finite_float` argparse type, usage 2 + m17 closed-stdin keypress wait → False + m19 hand-edited `idle_color` → `ConfigError` 6; README rows 2/6/9 extended; m18/m20 queued | `python3 -m unittest` 373/373 + `scripts/lint.sh` GREEN + live exit-2/6/9 probes via shim |
 | `v0.26.0` | 2026-10-24 | Done | CLI surface parity + carried §21 minors: `events list\|add\|remove` accept `--config F` **before and after** the sub-action (`argparse.SUPPRESS` sub-action defaults keep the parent value — argparse copies the sub-action namespace over the parent's; sub-action position wins) + m18 closed via new `ak820/configvalues.py` — events-config field-value coercion at the `load_events_config` choke point (D22's value half: scalars coerce losslessly, null/list/object + non-`{years}` note placeholders → `ConfigError` 6 naming `events[i].field`; `"idle_mode": "1"` → 1) + m20 closed — identical `events add` skips the write ("already up to date", bytes + mtime untouched); README exit-6 row + events `--config` example synced | `python3 -m unittest` 422/422 + `scripts/lint.sh` GREEN + live parity/exit-6/mtime-stable no-op probes via shim |
 | `v0.25.0` | 2026-10-24 | Done | Architecture & Modularity (REVIEW.md §22): split the two top-level monoliths into single-responsibility package modules — `milestone_radar.py` (510 lines) → `ak820/events.py` (PIL-free events-config domain: D4/D5/m7/D22 validation + countdown rows) + `ak820/cards.py` (hero/board/custom renderers) + `ak820/palette.py` (THEMES urgency palette); `widgets.py` (359 lines) → `ak820/telemetry.py` (PIL-free sysfs/proc + playerctl/MPRIS probes) + `ak820/hud.py` (HUD/media card renderers); `ConfigError` moved into `ak820/errors.py` re-parented under `AK820Error` (exit 6 unchanged; `main()` now has ONE except branch and no shim import); both top-level files became identity shims and `ak820/` is now **self-contained** (zero imports of `milestone_radar`/`widgets`); all 21 package modules + 3 shims < 300 lines; 13-fixture render manifest byte-identical pre/post | `python3 -m unittest` 391/391 + `scripts/lint.sh` GREEN + byte-identical render parity + live events-CRUD/dry-run/preview/exit-2/6 probes via shim |
+| `v0.28.0` | 2026-10-25 | Done | m21 closed — `idle_rainbow` bool coercion at the `configvalues` choke point: new `_as_bool` + `_IDLE_BOOL_FIELDS` (bools pass; `0`/`1` ints and `"true"/"false"/"1"/"0"` text case/whitespace-insensitive coerce losslessly; `"yes"`, `2`, `-1`, `1.0`, `null`, list/object → `ConfigError` 6 naming `backlight.idle_rainbow` — same taxonomy as m18); the m21 repro `"false"` now writes rainbow byte 0 (was 1); anti-recurrence invariant locks every `get_idle_backlight_cfg` `bl.get` field into a coercion list; README exit-6 row synced | `python3 -m unittest` 469/469 + `scripts/lint.sh` GREEN + live real-hardware probes (`"false"` → 0/coerced, `"yes"` → 6 both seams) |
 | `v0.27.0` | 2026-10-25 | Done | Config-override parity on the device-bound surface + `events add --note`: `config_path` threaded through `get/save/apply_idle_backlight_cfg` + `set_status_backlight`, `--config` on `backlight` (parent + SUPPRESS sub-action positions, sub-action wins), `status`, `run` — v0.26.0 invariant now holds everywhere; `SHOWCASE_PRESETS` → new pure-data `ak820/presets.py` (identity re-export, `backlight.py` 221 lines); `events add --note` validated by new public `configvalues.validate_note` (single home of `{years}` rule, loader+CLI both exit 6), re-add without `--note` preserves the note, m20 no-op extends over it; `compute_upcoming_events` trust boundary decided + docstring/test-locked (no second guard — `load_events_config` choke point stays the only home); README + REVIEW §23 synced | `python3 -m unittest` 458/458 + `scripts/lint.sh` GREEN + live real-hardware `--save --config`/note/exit-6 probes via shim |
 
 ---
@@ -379,7 +380,7 @@
     while probing: `idle_rainbow` bypasses `configvalues` — `"false"` string
     is truthy in the rainbow byte -> queued below as m21.
 
-- [ ] **`v0.28.0`** — m21 (REVIEW.md §23.1): `backlight.idle_rainbow` value
+- [x] **`v0.28.0`** — m21 (REVIEW.md §23.1): `backlight.idle_rainbow` value
     coercion — the one idle field in no `configvalues` list:
   - A hand-edited `"idle_rainbow": "false"` (non-empty string) passes through
     `coerce_config_values` untouched and is truthy in `set_backlight`'s byte
@@ -394,4 +395,26 @@
   - Regression tests: wire-byte proof (data[8]) for each accepted form, exit
     6 for each rejected one, through both `events list --config` (load choke
     point) and `apply_idle_backlight(dev, path)` (consumer seam).
+  - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
+  - **Shipped:** as specified; suite 458 -> 469; `scripts/lint.sh` GREEN.
+    `_as_bool` + `_IDLE_BOOL_FIELDS` at the same m18/D22 choke point; text
+    spellings case/whitespace-insensitive (mirrors `_as_int`'s strip); `1.0`
+    deliberately rejected — close-but-not-lossless is named, never guessed.
+    Anti-recurrence invariant (the real win): every `bl.get(...)` key in
+    `get_idle_backlight_cfg` must appear in one of the three coercion lists,
+    so a future idle field in no list fails the suite mechanically — m21's
+    root cause is structurally dead, not just patched. README exit-6 row
+    synced. `tests/test_idle_rainbow_bool_v028.py` (11 offline tests, zero
+    hardware). Live probes on real hardware: `"false"` → exit 0 + rainbow byte
+    0 (was 1), `"yes"` → 6 naming `backlight.idle_rainbow` on both seams,
+    version 0.28.0.
+
+- [ ] **`v0.29.0`** — Comprehensive Re-Audit (REVIEW.md §25, cadence 5 — last
+    full re-audit was v0.24.0 §21): walk every error, operand and signal path
+    again after the v0.25–v0.28 surface growth (package split shims,
+    `--config` on every consumer, `--note`, `presets.py`, bool coercion);
+    reproduce every suspect live (real hardware + shim) before fixing; verify
+    README Exit Codes ↔ `errors.py` ↔ `DOCUMENTED_CODES` parity, §10.2
+    dependency rule, <300-line budget and shim identity across all 24 package
+    modules + 3 shims; close the top findings and queue the rest.
   - Verify `python3 -m unittest discover -s tests` passes 100% + lint gate green.
