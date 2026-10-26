@@ -241,8 +241,8 @@ one ACKed by the MCU, so transfer time is proportional to payload size:
 
 | Payload | Frames | Chunks | Bytes | Wall clock |
 |:---|:---|:---|:---|:---|
-| Single frame — `radar --view board` (default), `--view hero`, `hud`, `media`, `card` | 1 | **9** | 36 KB | **~2.2 s** |
-| Animated GIF / 34-frame `radar --view cycle` | 34 | **273** | 1.11 MB | **~26.5 s** |
+| Single frame — `radar --view board` (default), `--view hero`, `hud`, `media`, `card` | 1 | **9 chunks** | 36 KB | **~2.2 s** |
+| Animated GIF / 34-frame `radar --view cycle` | 34 | **273 chunks** | 1.11 MB | **~26.5 s** |
 
 That is why `radar` defaults to `--view board`: the same three countdown rows,
 uploaded roughly twelve times faster. Choose `--view cycle` or `upload <gif>`
