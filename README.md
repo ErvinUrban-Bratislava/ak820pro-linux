@@ -79,9 +79,6 @@ Push a real-time system stats card (CPU %, RAM %, CPU temp, uptime, and clock) t
 ```bash
 # Push current system snapshot
 ak820 hud
-
-# Or keep it updating continuously every 15 seconds:
-ak820 hud --watch 15
 ```
 
 ### 2. "Now Playing" Media Card
@@ -89,9 +86,6 @@ Display currently playing media from Spotify, Chrome, Firefox, VLC, or any MPRIS
 ```bash
 # Push current track info
 ak820 media
-
-# Or monitor playback changes continuously:
-ak820 media --watch 10
 ```
 
 ### 3. Developer Mode: Wrap Any Shell Command with Keypress Auto-Revert
@@ -214,25 +208,16 @@ systemctl --user enable --now ak820-radar.timer
 
 ## Screen Navigation & Troubleshooting
 
-### Switching between the stock screen and your custom screen (`Fn + Del`)
+### Switching between the stock screen and your custom screen
 
-The keyboard has **two independent screens worth of content** and one hardware
-shortcut to jump between them:
+The keyboard has **two independent screens worth of content**:
 
 | Screen | What it shows | How to get it |
 |:---|:---|:---|
-| **Stock factory time screen** | The firmware's built-in clock/date widget | On power-up, and after every `ak820 sync-clock` |
-| **Custom SPI flash screen** | Whatever you last uploaded: custom GIF (`upload`), milestone radar (`radar`), HUD (`hud`), or card (`card`) | Press **`Fn + Del`** on the physical keyboard |
+| **Stock factory time screen** | The firmware's built-in clock/date widget with ticking seconds | On power-up, `Fn + Home`, knob menu (hold 3s), and after `ak820 sync-clock` |
+| **Custom SPI flash screen** | Whatever you last uploaded: custom GIF (`upload`), milestone radar (`radar`), HUD (`hud`), or card (`card`) | Selected via rotary knob menu (hold 3s) |
 
-**`Fn + Del` toggles between them.** Uploaded content is written to the keyboard's
-SPI flash and stays there across reboots and unplugging — it is never lost, only
-de-selected. The one thing that reliably sends the panel back to the stock time
-screen is a clock write: **`ak820 sync-clock` (and `radar --sync-clock`) makes the
-firmware return to the stock time screen.** Nothing is broken and nothing needs
-re-uploading — press **`Fn + Del`** and the custom screen comes straight back.
-
-If `Fn + Del` appears to do nothing, the custom screen is simply empty (nothing
-uploaded yet in this SPI flash slot): run `ak820 radar` or `ak820 hud` first.
+Note on **`Fn + Del`**: this hardware shortcut toggles the TFT screen display sleep (ON/OFF). To switch back to the home clock screen, hold the rotary knob for 3 seconds or press **`Fn + Home`**. A clock write: **`ak820 sync-clock` (and `radar --sync-clock`) makes the firmware return to the stock time screen.** Uploaded content is written to the keyboard's SPI flash and stays there across reboots and unplugging — it is never lost, only de-selected.
 
 ### Upload speed: single-frame views vs animated GIFs
 
@@ -310,13 +295,12 @@ ak820 --dry-run upload image.png
 
 | Unit | Type | Purpose |
 |:---|:---|:---|
-| `ak820-radar.service` + `.timer` | oneshot + timer | Refresh the milestone radar every 30 min (dedup makes no-change runs free) |
-| `ak820-hud.service` | simple, `Restart=on-failure` | Continuous `hud --watch 15`; a mid-op unplug exits **75** (EX_TEMPFAIL) and systemd re-spawns after re-seating |
+| `ak820-radar.service` + `.timer` | oneshot + timer | Refresh the milestone radar periodically (dedup makes no-change runs free) |
 
 ```bash
 # User units (keyboard access needs the udev GROUP, see Setup above):
-mkdir -p ~/.config/systemd/user && cp systemd/ak820-* ~/.config/systemd/user/
-systemctl --user daemon-reload && systemctl --user enable --now ak820-radar.timer ak820-hud.service
+mkdir -p ~/.config/systemd/user && cp systemd/ak820-radar.* ~/.config/systemd/user/
+systemctl --user daemon-reload && systemctl --user enable --now ak820-radar.timer
 ```
 
 **Out of scope by decision (v0.39.0):** the adaptive policy daemon

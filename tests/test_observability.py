@@ -190,12 +190,10 @@ class TestWaitForKeypressStdinEof(unittest.TestCase):
 
 
 class TestSystemdUnits(unittest.TestCase):
-    """B7: shipped units — oneshot+timer for radar, Restart=on-failure for HUD."""
+    """B7: shipped units — oneshot+timer for radar (no continuous watch units: flash wear/flicker anti-pattern)."""
 
     def test_units_exist_and_pair_with_exit_contract(self):
-        svc = (ROOT / "systemd" / "ak820-hud.service").read_text()
-        self.assertIn("Restart=on-failure", svc)  # exit 75 -> systemd re-spawns
-        self.assertIn("ak820 hud --watch", svc)
+        self.assertFalse((ROOT / "systemd" / "ak820-hud.service").exists())
 
         radar = (ROOT / "systemd" / "ak820-radar.service").read_text()
         self.assertIn("Type=oneshot", radar)
